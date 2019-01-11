@@ -1126,6 +1126,20 @@ static int cmsis_dap_quit(void)
 	return ERROR_OK;
 }
 
+static int cmsis_dap_system_reset(int req_srst)
+{
+	if (req_srst)
+		output_pins &= ~SWJ_PIN_SRST;
+	else
+		output_pins |= SWJ_PIN_SRST;
+
+	int retval = cmsis_dap_cmd_DAP_SWJ_Pins(output_pins,
+			SWJ_PIN_SRST, 0, NULL);
+	if (retval != ERROR_OK)
+		LOG_ERROR("CMSIS-DAP: Interface srst failed");
+	return retval;
+}
+
 static void cmsis_dap_execute_reset(struct jtag_command *cmd)
 {
 	/* Set both TRST and SRST even if they're not enabled as
@@ -1802,4 +1816,5 @@ struct jtag_interface cmsis_dap_interface = {
 	.khz = cmsis_dap_khz,
 	.init = cmsis_dap_init,
 	.quit = cmsis_dap_quit,
+	.system_reset = cmsis_dap_system_reset,
 };

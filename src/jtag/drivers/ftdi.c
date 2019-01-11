@@ -710,6 +710,29 @@ static int ftdi_quit(void)
 	return ERROR_OK;
 }
 
+static int ftdi_system_reset(int req_srst)
+{
+	struct signal *srst = find_signal_by_name("nSRST");
+
+	if (!srst) {
+		if (req_srst)
+			LOG_ERROR("Can't assert SRST: nSRST signal is not defined");
+		return ERROR_FAIL;
+	}
+
+	if (req_srst) {
+		ftdi_set_signal(srst, '0');
+	} else {
+		if (jtag_get_reset_config() & RESET_SRST_PUSH_PULL)
+			ftdi_set_signal(srst, '1');
+		else
+			ftdi_set_signal(srst, 'z');
+	}
+
+	DEBUG_JTAG_IO("srst: %i", req_srst);
+	return ERROR_OK;
+}
+
 COMMAND_HANDLER(ftdi_handle_device_desc_command)
 {
 	if (CMD_ARGC == 1) {
@@ -1248,6 +1271,7 @@ struct jtag_interface ftdi_interface = {
 
 	.init = ftdi_initialize,
 	.quit = ftdi_quit,
+	.system_reset = ftdi_system_reset,
 	.speed = ftdi_speed,
 	.speed_div = ftdi_speed_div,
 	.khz = ftdi_khz,

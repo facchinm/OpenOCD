@@ -1368,6 +1368,27 @@ static void xds110_show_info(void)
 	}
 }
 
+static int xds110_system_reset(int req_srst)
+{
+	char srst;
+	bool success;
+
+	if (req_srst) {
+		/* Assert nSRST (active low) */
+		srst = 0;
+	} else {
+		/* Deassert nSRST (active low) */
+		srst = 1;
+	}
+	success = xds_set_srst(srst);
+	if (success) {
+		/* Toggle TCK to trigger HIB on CC13x/CC26x devices */
+		success = xds_cycle_tck(60000);
+	}
+
+	return (success) ? ERROR_OK : ERROR_FAIL;
+}
+
 static int xds110_quit(void)
 {
 	if (xds110.is_cmapi_acquired) {
@@ -2045,4 +2066,5 @@ struct jtag_interface xds110_interface = {
 	.khz = xds110_khz,
 	.init = xds110_init,
 	.quit = xds110_quit,
+	.system_reset = xds110_system_reset,
 };

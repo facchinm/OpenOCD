@@ -311,6 +311,21 @@ static int jlink_execute_queue(void)
 	return jlink_flush();
 }
 
+static int jlink_system_reset(int req_srst)
+{
+	LOG_DEBUG("SRST: %i.", req_srst);
+
+	jlink_flush();
+
+	/* Signals are active low. */
+	if (req_srst)
+		jaylink_clear_reset(devh);
+	else
+		jaylink_set_reset(devh);
+
+	return jlink_flush();
+}
+
 static int jlink_speed(int speed)
 {
 	int ret;
@@ -2189,6 +2204,7 @@ struct jtag_interface jlink_interface = {
 	.khz = &jlink_khz,
 	.init = &jlink_init,
 	.quit = &jlink_quit,
+	.system_reset = &jlink_system_reset,
 	.config_trace = &config_trace,
 	.poll_trace = &poll_trace,
 };

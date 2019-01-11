@@ -277,6 +277,19 @@ static void vsllink_free_buffer(void)
 	}
 }
 
+static int vsllink_system_reset(int req_srst)
+{
+	LOG_DEBUG("srst: %i", req_srst);
+
+	if (req_srst)
+		versaloon_interface.adaptors.gpio.config(0, GPIO_SRST, GPIO_SRST, 0, 0);
+	else
+		versaloon_interface.adaptors.gpio.config(0, GPIO_SRST, 0, GPIO_SRST, GPIO_SRST);
+
+	versaloon_interface.adaptors.peripheral_commit();
+	return ERROR_OK;
+}
+
 static int vsllink_quit(void)
 {
 	versaloon_interface.adaptors.gpio.config(0, GPIO_SRST | GPIO_TRST,
@@ -979,6 +992,7 @@ struct jtag_interface vsllink_interface = {
 
 	.init = vsllink_init,
 	.quit = vsllink_quit,
+	.system_reset = vsllink_system_reset,
 	.khz = vsllink_khz,
 	.speed = vsllink_speed,
 	.speed_div = vsllink_speed_div,

@@ -91,6 +91,7 @@ static void imx_gpio_swdio_drive(bool is_output);
 
 static int imx_gpio_init(void);
 static int imx_gpio_quit(void);
+static int imx_gpio_system_reset(int req_srst);
 
 static struct bitbang_interface imx_gpio_bitbang = {
 	.read = imx_gpio_read,
@@ -441,6 +442,7 @@ struct jtag_interface imx_gpio_interface = {
 	.commands = imx_gpio_command_handlers,
 	.init = imx_gpio_init,
 	.quit = imx_gpio_quit,
+	.system_reset = imx_gpio_system_reset,
 };
 
 static bool imx_gpio_jtag_mode_possible(void)
@@ -570,5 +572,15 @@ static int imx_gpio_quit(void)
 	if (srst_gpio != -1)
 		gpio_mode_set(srst_gpio, srst_gpio_mode);
 
+	return ERROR_OK;
+}
+
+static int imx_gpio_system_reset(int req_srst)
+{
+	if (srst_gpio == -1)
+		return ERROR_FAIL;
+
+	/* Signal is active low. */
+	req_srst ? gpio_clear(srst_gpio) : gpio_set(srst_gpio);
 	return ERROR_OK;
 }

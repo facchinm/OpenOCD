@@ -243,6 +243,21 @@ static int kitprog_quit(void)
 	return ERROR_OK;
 }
 
+static int kitprog_system_reset(int req_srst)
+{
+	int retval;
+
+	if (!req_srst)
+		return ERROR_OK;
+
+	/* See comment in kitprog_execute_reset() about SWCLK disabled */
+	retval = kitprog_reset_target();
+	if (retval != ERROR_OK)
+		LOG_ERROR("KitProg: Interface reset failed");
+
+	return retval;
+}
+
 /*************** kitprog usb functions *********************/
 
 static int kitprog_get_usb_serial(void)
@@ -968,5 +983,6 @@ struct jtag_interface kitprog_interface = {
 	.swd = &kitprog_swd,
 	.execute_queue = kitprog_execute_queue,
 	.init = kitprog_init,
-	.quit = kitprog_quit
+	.quit = kitprog_quit,
+	.system_reset = kitprog_system_reset,
 };

@@ -611,50 +611,47 @@ void jtag_add_clocks(int num_cycles)
 	}
 }
 
-void swd_add_reset(int req_srst)
+int adapter_system_reset(int req_srst)
 {
+	int retval;
+
 	if (req_srst) {
 		if (!(jtag_reset_config & RESET_HAS_SRST)) {
 			LOG_ERROR("BUG: can't assert SRST");
-			jtag_set_error(ERROR_FAIL);
-			return;
+			return ERROR_FAIL;
 		}
 		req_srst = 1;
 	}
 
 	/* Maybe change SRST signal state */
 	if (jtag_srst != req_srst) {
-		int retval;
+		if (req_srst) {
+			if (!jtag->system_reset) {
+				LOG_ERROR("BUG: can't assert SRST");
+				return ERROR_FAIL;
+			}
+			retval = jtag->system_reset(req_srst);
+			if (retval != ERROR_OK) {
+				LOG_ERROR("SRST error");
+				return ERROR_FAIL;
+			}
+			jtag_srst = req_srst;
 
-		retval = interface_jtag_add_reset(0, req_srst);
-		if (retval != ERROR_OK)
-			jtag_set_error(retval);
-		else
-			retval = jtag_execute_queue();
-
-		if (retval != ERROR_OK) {
-			LOG_ERROR("TRST/SRST error");
-			return;
-		}
-
-		/* SRST resets everything hooked up to that signal */
-		jtag_srst = req_srst;
-		if (jtag_srst) {
 			LOG_DEBUG("SRST line asserted");
 			if (adapter_nsrst_assert_width)
-				jtag_add_sleep(adapter_nsrst_assert_width * 1000);
+				jtag_sleep(adapter_nsrst_assert_width * 1000);
 		} else {
+			jtag_srst = req_srst;
+			if (!jtag->system_reset)
+				return ERROR_OK;
+			(void)jtag->system_reset(req_srst);
+
 			LOG_DEBUG("SRST line released");
 			if (adapter_nsrst_delay)
-				jtag_add_sleep(adapter_nsrst_delay * 1000);
-		}
-
-		retval = jtag_execute_queue();
-		if (retval != ERROR_OK) {
-			LOG_ERROR("SRST timings error");
-			return;
+				jtag_sleep(adapter_nsrst_delay * 1000);
 		}
 	}
+	return ERROR_OK;
 }
 
 void jtag_add_reset(int req_tlr_or_trst, int req_srst)
@@ -1493,10 +1490,9 @@ int swd_init_reset(struct command_context *cmd_ctx)
 	LOG_DEBUG("Initializing with hard SRST reset");
 
 	if (jtag_reset_config & RESET_HAS_SRST)
-		swd_add_reset(1);
-	swd_add_reset(0);
-	retval = jtag_execute_queue();
-	return retval;
+		adapter_assert_reset();
+	adapter_deassert_reset();
+	return ERROR_OK;
 }
 
 int jtag_init_reset(struct command_context *cmd_ctx)
@@ -1827,7 +1823,7 @@ void adapter_assert_reset(void)
 		else
 			jtag_add_reset(0, 1);
 	} else if (transport_is_swd())
-		swd_add_reset(1);
+		(void)adapter_system_reset(1);
 	else if (get_current_transport() != NULL)
 		LOG_ERROR("reset is not supported on %s",
 			get_current_transport()->name);
@@ -1840,7 +1836,7 @@ void adapter_deassert_reset(void)
 	if (transport_is_jtag())
 		jtag_add_reset(0, 0);
 	else if (transport_is_swd())
-		swd_add_reset(0);
+		(void)adapter_system_reset(0);
 	else if (get_current_transport() != NULL)
 		LOG_ERROR("reset is not supported on %s",
 			get_current_transport()->name);
