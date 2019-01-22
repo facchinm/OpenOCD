@@ -250,8 +250,15 @@ static int kitprog_system_reset(int req_srst)
 	if (!req_srst)
 		return ERROR_OK;
 
-	/* See comment in kitprog_execute_reset() about SWCLK disabled */
 	retval = kitprog_reset_target();
+	/* Since the previous command also disables SWCLK output, we need to send an
+	 * SWD bus reset command to re-enable it. For some reason, running
+	 * kitprog_swd_seq() immediately after kitprog_reset_target() won't
+	 * actually fix this. Instead, kitprog_swd_seq() will be run once OpenOCD
+	 * tries to send a JTAG-to-SWD sequence, which should happen during
+	 * swd_check_reconnect (see the JTAG_TO_SWD case in kitprog_swd_switch_seq).
+	 */
+
 	if (retval != ERROR_OK)
 		LOG_ERROR("KitProg: Interface reset failed");
 
@@ -832,59 +839,6 @@ static void kitprog_swd_queue_cmd(uint8_t cmd, uint32_t *dst, uint32_t data)
 	pending_transfer_count++;
 }
 
-/*************** jtag lowlevel functions ********************/
-
-static void kitprog_execute_reset(struct jtag_command *cmd)
-{
-	int retval = ERROR_OK;
-
-	if (cmd->cmd.reset->srst == 1) {
-		retval = kitprog_reset_target();
-		/* Since the previous command also disables SWCLK output, we need to send an
-		 * SWD bus reset command to re-enable it. For some reason, running
-		 * kitprog_swd_seq() immediately after kitprog_reset_target() won't
-		 * actually fix this. Instead, kitprog_swd_seq() will be run once OpenOCD
-		 * tries to send a JTAG-to-SWD sequence, which should happen during
-		 * swd_check_reconnect (see the JTAG_TO_SWD case in kitprog_swd_switch_seq).
-		 */
-	}
-
-	if (retval != ERROR_OK)
-		LOG_ERROR("KitProg: Interface reset failed");
-}
-
-static void kitprog_execute_sleep(struct jtag_command *cmd)
-{
-	jtag_sleep(cmd->cmd.sleep->us);
-}
-
-static void kitprog_execute_command(struct jtag_command *cmd)
-{
-	switch (cmd->type) {
-		case JTAG_RESET:
-			kitprog_execute_reset(cmd);
-			break;
-		case JTAG_SLEEP:
-			kitprog_execute_sleep(cmd);
-			break;
-		default:
-			LOG_ERROR("BUG: unknown JTAG command type encountered");
-			exit(-1);
-	}
-}
-
-static int kitprog_execute_queue(void)
-{
-	struct jtag_command *cmd = jtag_command_queue;
-
-	while (cmd != NULL) {
-		kitprog_execute_command(cmd);
-		cmd = cmd->next;
-	}
-
-	return ERROR_OK;
-}
-
 COMMAND_HANDLER(kitprog_handle_info_command)
 {
 	int retval = kitprog_get_info();
@@ -981,7 +935,6 @@ struct jtag_interface kitprog_interface = {
 	.commands = kitprog_command_handlers,
 	.transports = kitprog_transports,
 	.swd = &kitprog_swd,
-	.execute_queue = kitprog_execute_queue,
 	.init = kitprog_init,
 	.quit = kitprog_quit,
 	.system_reset = kitprog_system_reset,
