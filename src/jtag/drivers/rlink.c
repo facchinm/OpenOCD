@@ -1674,6 +1674,7 @@ static int rlink_quit(void)
 
 struct jtag_interface rlink_interface = {
 	.name = "rlink",
+	.transports = jtag_only,
 	.init = rlink_init,
 	.quit = rlink_quit,
 	.speed = rlink_speed,

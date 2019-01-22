@@ -612,6 +612,7 @@ static void usbprog_jtag_tms_send(struct usbprog_jtag *usbprog_jtag)
 
 struct jtag_interface usbprog_interface = {
 	.name = "usbprog",
+	.transports = jtag_only,
 
 	.execute_queue = usbprog_execute_queue,
 	.init = usbprog_init,
