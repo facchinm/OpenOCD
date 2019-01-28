@@ -127,6 +127,11 @@ static int hl_interface_quit(void)
 	return ERROR_OK;
 }
 
+static int hl_interface_system_reset(int req_srst)
+{
+	return hl_if.layout->api->assert_srst(hl_if.handle, req_srst ? 0 : 1);
+}
+
 static int hl_interface_execute_queue(void)
 {
 	LOG_DEBUG("hl_interface_execute_queue: ignored");
@@ -136,13 +141,12 @@ static int hl_interface_execute_queue(void)
 
 int hl_interface_init_reset(void)
 {
-	/* incase the adapter has not already handled asserting srst
+	/* in case the adapter has not already handled asserting srst
 	 * we will attempt it again */
 	if (hl_if.param.connect_under_reset) {
-		jtag_add_reset(0, 1);
-		hl_if.layout->api->assert_srst(hl_if.handle, 0);
+		adapter_assert_reset();
 	} else {
-		jtag_add_reset(0, 0);
+		adapter_deassert_reset();
 	}
 
 	return ERROR_OK;
@@ -355,6 +359,7 @@ struct jtag_interface hl_interface = {
 	.transports = hl_transports,
 	.init = hl_interface_init,
 	.quit = hl_interface_quit,
+	.system_reset = hl_interface_system_reset,
 	.execute_queue = hl_interface_execute_queue,
 	.speed = &hl_interface_speed,
 	.khz = &hl_interface_khz,
