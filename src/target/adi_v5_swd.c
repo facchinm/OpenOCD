@@ -112,7 +112,7 @@ static int swd_connect(struct adiv5_dap *dap)
 
 		if (jtag_reset_config & RESET_CNCT_UNDER_SRST) {
 			if (jtag_reset_config & RESET_SRST_NO_GATING)
-				swd_add_reset(1);
+				adapter_assert_reset();
 			else
 				LOG_WARNING("\'srst_nogate\' reset_config option is required");
 		}
@@ -142,6 +142,14 @@ static int swd_connect(struct adiv5_dap *dap)
 	return status;
 }
 
+static int swd_send_sequence(struct adiv5_dap *dap, enum swd_special_seq seq)
+{
+	const struct swd_driver *swd = adiv5_dap_swd_driver(dap);
+	assert(swd);
+
+	return swd->switch_seq(seq);
+}
+
 static inline int check_sync(struct adiv5_dap *dap)
 {
 	return do_sync ? swd_run_inner(dap) : ERROR_OK;
@@ -166,26 +174,22 @@ static int swd_queue_ap_abort(struct adiv5_dap *dap, uint8_t *ack)
 }
 
 /** Select the DP register bank matching bits 7:4 of reg. */
-static int swd_queue_dp_bankselect(struct adiv5_dap *dap, unsigned reg)
+static void swd_queue_dp_bankselect(struct adiv5_dap *dap, unsigned reg)
 {
 	/* Only register address 4 is banked. */
 	if ((reg & 0xf) != 4)
-		return ERROR_OK;
+		return;
 
 	uint32_t select_dp_bank = (reg & 0x000000F0) >> 4;
 	uint32_t sel = select_dp_bank
 			| (dap->select & (DP_SELECT_APSEL | DP_SELECT_APBANK));
 
 	if (sel == dap->select)
-		return ERROR_OK;
+		return;
 
 	dap->select = sel;
 
-	int retval = swd_queue_dp_write(dap, DP_SELECT, sel);
-	if (retval != ERROR_OK)
-		dap->select = DP_SELECT_INVALID;
-
-	return retval;
+	swd_queue_dp_write(dap, DP_SELECT, sel);
 }
 
 static int swd_queue_dp_read(struct adiv5_dap *dap, unsigned reg,
@@ -198,10 +202,7 @@ static int swd_queue_dp_read(struct adiv5_dap *dap, unsigned reg,
 	if (retval != ERROR_OK)
 		return retval;
 
-	retval = swd_queue_dp_bankselect(dap, reg);
-	if (retval != ERROR_OK)
-		return retval;
-
+	swd_queue_dp_bankselect(dap, reg);
 	swd->read_reg(swd_cmd(true,  false, reg), data, 0);
 
 	return check_sync(dap);
@@ -218,29 +219,14 @@ static int swd_queue_dp_write(struct adiv5_dap *dap, unsigned reg,
 		return retval;
 
 	swd_finish_read(dap);
-	if (reg == DP_SELECT) {
-		dap->select = data & (DP_SELECT_APSEL | DP_SELECT_APBANK | DP_SELECT_DPBANK);
-
-		swd->write_reg(swd_cmd(false,  false, reg), data, 0);
-
-		retval = check_sync(dap);
-		if (retval != ERROR_OK)
-			dap->select = DP_SELECT_INVALID;
-
-		return retval;
-	}
-
-	retval = swd_queue_dp_bankselect(dap, reg);
-	if (retval != ERROR_OK)
-		return retval;
-
+	swd_queue_dp_bankselect(dap, reg);
 	swd->write_reg(swd_cmd(false,  false, reg), data, 0);
 
 	return check_sync(dap);
 }
 
 /** Select the AP register bank matching bits 7:4 of reg. */
-static int swd_queue_ap_bankselect(struct adiv5_ap *ap, unsigned reg)
+static void swd_queue_ap_bankselect(struct adiv5_ap *ap, unsigned reg)
 {
 	struct adiv5_dap *dap = ap->dap;
 	uint32_t sel = ((uint32_t)ap->ap_num << 24)
@@ -248,15 +234,11 @@ static int swd_queue_ap_bankselect(struct adiv5_ap *ap, unsigned reg)
 			| (dap->select & DP_SELECT_DPBANK);
 
 	if (sel == dap->select)
-		return ERROR_OK;
+		return;
 
 	dap->select = sel;
 
-	int retval = swd_queue_dp_write(dap, DP_SELECT, sel);
-	if (retval != ERROR_OK)
-		dap->select = DP_SELECT_INVALID;
-
-	return retval;
+	swd_queue_dp_write(dap, DP_SELECT, sel);
 }
 
 static int swd_queue_ap_read(struct adiv5_ap *ap, unsigned reg,
@@ -270,10 +252,7 @@ static int swd_queue_ap_read(struct adiv5_ap *ap, unsigned reg,
 	if (retval != ERROR_OK)
 		return retval;
 
-	retval = swd_queue_ap_bankselect(ap, reg);
-	if (retval != ERROR_OK)
-		return retval;
-
+	swd_queue_ap_bankselect(ap, reg);
 	swd->read_reg(swd_cmd(true,  true, reg), dap->last_read, ap->memaccess_tck);
 	dap->last_read = data;
 
@@ -292,10 +271,7 @@ static int swd_queue_ap_write(struct adiv5_ap *ap, unsigned reg,
 		return retval;
 
 	swd_finish_read(dap);
-	retval = swd_queue_ap_bankselect(ap, reg);
-	if (retval != ERROR_OK)
-		return retval;
-
+	swd_queue_ap_bankselect(ap, reg);
 	swd->write_reg(swd_cmd(false,  true, reg), data, ap->memaccess_tck);
 
 	return check_sync(dap);
@@ -320,6 +296,7 @@ static void swd_quit(struct adiv5_dap *dap)
 
 const struct dap_ops swd_dap_ops = {
 	.connect = swd_connect,
+	.send_sequence = swd_send_sequence,
 	.queue_dp_read = swd_queue_dp_read,
 	.queue_dp_write = swd_queue_dp_write,
 	.queue_ap_read = swd_queue_ap_read,
@@ -358,9 +335,9 @@ static const struct command_registration swd_handlers[] = {
 
 static int swd_select(struct command_context *ctx)
 {
-	/* FIXME: only place where global 'jtag_interface' is still needed */
-	extern struct jtag_interface *jtag_interface;
-	const struct swd_driver *swd = jtag_interface->swd;
+	/* FIXME: only place where global 'adapter_driver' is still needed */
+	extern struct adapter_driver *adapter_driver;
+	const struct swd_driver *swd = adapter_driver->swd_ops;
 	int retval;
 
 	retval = register_commands(ctx, NULL, swd_handlers);

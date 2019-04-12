@@ -358,15 +358,6 @@ static void add_dbus_scan(const struct target *target, struct scan_field *field,
 		uint16_t address, uint64_t data)
 {
 	riscv011_info_t *info = get_info(target);
-	RISCV_INFO(r);
-
-	if (r->reset_delays_wait >= 0) {
-		r->reset_delays_wait--;
-		if (r->reset_delays_wait < 0) {
-			info->dbus_busy_delay = 0;
-			info->interrupt_high_delay = 0;
-		}
-	}
 
 	field->num_bits = info->addrbits + DBUS_OP_SIZE + DBUS_DATA_SIZE;
 	field->in_value = in_value;
@@ -1417,6 +1408,12 @@ static int strict_step(struct target *target, bool announce)
 
 	LOG_DEBUG("enter");
 
+	struct breakpoint *breakpoint = target->breakpoints;
+	while (breakpoint) {
+		riscv_remove_breakpoint(target, breakpoint);
+		breakpoint = breakpoint->next;
+	}
+
 	struct watchpoint *watchpoint = target->watchpoints;
 	while (watchpoint) {
 		riscv_remove_watchpoint(target, watchpoint);
@@ -1426,6 +1423,12 @@ static int strict_step(struct target *target, bool announce)
 	int result = full_step(target, announce);
 	if (result != ERROR_OK)
 		return result;
+
+	breakpoint = target->breakpoints;
+	while (breakpoint) {
+		riscv_add_breakpoint(target, breakpoint);
+		breakpoint = breakpoint->next;
+	}
 
 	watchpoint = target->watchpoints;
 	while (watchpoint) {
@@ -1460,7 +1463,7 @@ static int step(struct target *target, int current, target_addr_t address,
 		if (result != ERROR_OK)
 			return result;
 	} else {
-		return full_step(target, false);
+		return resume(target, 0, true);
 	}
 
 	return ERROR_OK;
@@ -1673,7 +1676,7 @@ static riscv_error_t handle_halt_routine(struct target *target)
 				break;
 			default:
 				LOG_ERROR("Got invalid bus access status: %d", status);
-				goto error;
+				return ERROR_FAIL;
 		}
 		if (data & DMCONTROL_INTERRUPT) {
 			interrupt_set++;
@@ -1803,8 +1806,6 @@ static riscv_error_t handle_halt_routine(struct target *target)
 		}
 	}
 
-	scans_delete(scans);
-
 	if (dbus_busy) {
 		increase_dbus_busy_delay(target);
 		return RE_AGAIN;
@@ -1817,6 +1818,8 @@ static riscv_error_t handle_halt_routine(struct target *target)
 	/* TODO: get rid of those 2 variables and talk to the cache directly. */
 	info->dpc = reg_cache_get(target, CSR_DPC);
 	info->dcsr = reg_cache_get(target, CSR_DCSR);
+
+	scans_delete(scans);
 
 	cache_invalidate(target);
 
@@ -1847,7 +1850,7 @@ static int handle_halt(struct target *target, bool announce)
 			target->debug_reason = DBG_REASON_BREAKPOINT;
 			break;
 		case DCSR_CAUSE_HWBP:
-			target->debug_reason = DBG_REASON_WATCHPOINT;
+			target->debug_reason = DBG_REASON_WPTANDBKPT;
 			/* If we halted because of a data trigger, gdb doesn't know to do
 			 * the disable-breakpoints-step-enable-breakpoints dance. */
 			info->need_strict_step = true;

@@ -311,6 +311,21 @@ static int jlink_execute_queue(void)
 	return jlink_flush();
 }
 
+static int jlink_system_reset(int req_srst)
+{
+	LOG_DEBUG("SRST: %i.", req_srst);
+
+	jlink_flush();
+
+	/* Signals are active low. */
+	if (req_srst)
+		jaylink_clear_reset(devh);
+	else
+		jaylink_set_reset(devh);
+
+	return jlink_flush();
+}
+
 static int jlink_speed(int speed)
 {
 	int ret;
@@ -1888,14 +1903,6 @@ static void jlink_swd_read_reg(uint8_t cmd, uint32_t *value, uint32_t ap_delay_c
 	jlink_swd_queue_cmd(cmd, value, 0, ap_delay_clk);
 }
 
-static int_least32_t jlink_swd_frequency(int_least32_t hz)
-{
-	if (hz > 0)
-		jlink_speed(hz / 1000);
-
-	return hz;
-}
-
 /***************************************************************************/
 /* J-Link tap functions */
 
@@ -2171,7 +2178,6 @@ static void jlink_swd_queue_cmd(uint8_t cmd, uint32_t *dst, uint32_t data, uint3
 
 static const struct swd_driver jlink_swd = {
 	.init = &jlink_swd_init,
-	.frequency = &jlink_swd_frequency,
 	.switch_seq = &jlink_swd_switch_seq,
 	.read_reg = &jlink_swd_read_reg,
 	.write_reg = &jlink_swd_write_reg,
@@ -2180,17 +2186,24 @@ static const struct swd_driver jlink_swd = {
 
 static const char * const jlink_transports[] = { "jtag", "swd", NULL };
 
-struct jtag_interface jlink_interface = {
-	.name = "jlink",
-	.commands = jlink_command_handlers,
-	.transports = jlink_transports,
-	.swd = &jlink_swd,
+static struct jtag_interface jlink_interface = {
 	.execute_queue = &jlink_execute_queue,
-	.speed = &jlink_speed,
-	.speed_div = &jlink_speed_div,
-	.khz = &jlink_khz,
+};
+
+struct adapter_driver jlink_adapter_driver = {
+	.name = "jlink",
+	.transports = jlink_transports,
+	.commands = jlink_command_handlers,
+
 	.init = &jlink_init,
 	.quit = &jlink_quit,
+	.system_reset = &jlink_system_reset,
+	.speed = &jlink_speed,
+	.khz = &jlink_khz,
+	.speed_div = &jlink_speed_div,
 	.config_trace = &config_trace,
 	.poll_trace = &poll_trace,
+
+	.jtag_ops = &jlink_interface,
+	.swd_ops = &jlink_swd,
 };

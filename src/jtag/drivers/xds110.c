@@ -1368,6 +1368,27 @@ static void xds110_show_info(void)
 	}
 }
 
+static int xds110_system_reset(int req_srst)
+{
+	char srst;
+	bool success;
+
+	if (req_srst) {
+		/* Assert nSRST (active low) */
+		srst = 0;
+	} else {
+		/* Deassert nSRST (active low) */
+		srst = 1;
+	}
+	success = xds_set_srst(srst);
+	if (success) {
+		/* Toggle TCK to trigger HIB on CC13x/CC26x devices */
+		success = xds_cycle_tck(60000);
+	}
+
+	return (success) ? ERROR_OK : ERROR_FAIL;
+}
+
 static int xds110_quit(void)
 {
 	if (xds110.is_cmapi_acquired) {
@@ -1925,13 +1946,6 @@ static int xds110_khz(int khz, int *jtag_speed)
 	return ERROR_OK;
 }
 
-static int_least32_t xds110_swd_frequency(int_least32_t hz)
-{
-	if (hz > 0)
-		xds110_speed(hz / 1000);
-	return hz;
-}
-
 COMMAND_HANDLER(xds110_handle_info_command)
 {
 	xds110_show_info();
@@ -2032,7 +2046,6 @@ static const struct command_registration xds110_command_handlers[] = {
 
 static const struct swd_driver xds110_swd_driver = {
 	.init = xds110_swd_init,
-	.frequency = xds110_swd_frequency,
 	.switch_seq = xds110_swd_switch_seq,
 	.read_reg = xds110_swd_read_reg,
 	.write_reg = xds110_swd_write_reg,
@@ -2041,16 +2054,22 @@ static const struct swd_driver xds110_swd_driver = {
 
 static const char * const xds110_transport[] = { "swd", "jtag", NULL };
 
-struct jtag_interface xds110_interface = {
-	.name = "xds110",
-	.commands = xds110_command_handlers,
-	.swd = &xds110_swd_driver,
-	.transports = xds110_transport,
-
+static struct jtag_interface xds110_interface = {
 	.execute_queue = xds110_execute_queue,
-	.speed = xds110_speed,
-	.speed_div = xds110_speed_div,
-	.khz = xds110_khz,
+};
+
+struct adapter_driver xds110_adapter_driver = {
+	.name = "xds110",
+	.transports = xds110_transport,
+	.commands = xds110_command_handlers,
+
 	.init = xds110_init,
 	.quit = xds110_quit,
+	.system_reset = xds110_system_reset,
+	.speed = xds110_speed,
+	.khz = xds110_khz,
+	.speed_div = xds110_speed_div,
+
+	.jtag_ops = &xds110_interface,
+	.swd_ops = &xds110_swd_driver,
 };

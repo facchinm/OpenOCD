@@ -126,10 +126,10 @@ static int rclk_fallback_speed_khz;
 static enum {CLOCK_MODE_UNSELECTED, CLOCK_MODE_KHZ, CLOCK_MODE_RCLK} clock_mode;
 static int jtag_speed;
 
-static struct jtag_interface *jtag;
+/* FIXME: change name to this variable, it is not anymore JTAG only */
+static struct adapter_driver *jtag;
 
-/* configuration */
-struct jtag_interface *jtag_interface;
+extern struct adapter_driver *adapter_driver;
 
 void jtag_set_flush_queue_sleep(int ms)
 {
@@ -503,7 +503,7 @@ int jtag_add_tms_seq(unsigned nbits, const uint8_t *seq, enum tap_state state)
 {
 	int retval;
 
-	if (!(jtag->supported & DEBUG_CAP_TMS_SEQ))
+	if (!(jtag->jtag_ops->supported & DEBUG_CAP_TMS_SEQ))
 		return ERROR_JTAG_NOT_IMPLEMENTED;
 
 	jtag_checks();
@@ -611,50 +611,47 @@ void jtag_add_clocks(int num_cycles)
 	}
 }
 
-void swd_add_reset(int req_srst)
+int adapter_system_reset(int req_srst)
 {
+	int retval;
+
 	if (req_srst) {
 		if (!(jtag_reset_config & RESET_HAS_SRST)) {
 			LOG_ERROR("BUG: can't assert SRST");
-			jtag_set_error(ERROR_FAIL);
-			return;
+			return ERROR_FAIL;
 		}
 		req_srst = 1;
 	}
 
 	/* Maybe change SRST signal state */
 	if (jtag_srst != req_srst) {
-		int retval;
+		if (req_srst) {
+			if (!jtag->system_reset) {
+				LOG_ERROR("BUG: can't assert SRST");
+				return ERROR_FAIL;
+			}
+			retval = jtag->system_reset(req_srst);
+			if (retval != ERROR_OK) {
+				LOG_ERROR("SRST error");
+				return ERROR_FAIL;
+			}
+			jtag_srst = req_srst;
 
-		retval = interface_jtag_add_reset(0, req_srst);
-		if (retval != ERROR_OK)
-			jtag_set_error(retval);
-		else
-			retval = jtag_execute_queue();
-
-		if (retval != ERROR_OK) {
-			LOG_ERROR("TRST/SRST error");
-			return;
-		}
-
-		/* SRST resets everything hooked up to that signal */
-		jtag_srst = req_srst;
-		if (jtag_srst) {
 			LOG_DEBUG("SRST line asserted");
 			if (adapter_nsrst_assert_width)
-				jtag_add_sleep(adapter_nsrst_assert_width * 1000);
+				jtag_sleep(adapter_nsrst_assert_width * 1000);
 		} else {
+			jtag_srst = req_srst;
+			if (!jtag->system_reset)
+				return ERROR_OK;
+			(void)jtag->system_reset(req_srst);
+
 			LOG_DEBUG("SRST line released");
 			if (adapter_nsrst_delay)
-				jtag_add_sleep(adapter_nsrst_delay * 1000);
-		}
-
-		retval = jtag_execute_queue();
-		if (retval != ERROR_OK) {
-			LOG_ERROR("SRST timings error");
-			return;
+				jtag_sleep(adapter_nsrst_delay * 1000);
 		}
 	}
+	return ERROR_OK;
 }
 
 void jtag_add_reset(int req_tlr_or_trst, int req_srst)
@@ -836,7 +833,15 @@ int default_interface_jtag_execute_queue(void)
 		return ERROR_FAIL;
 	}
 
-	return jtag->execute_queue();
+	if (!transport_is_jtag()) {
+		/* FIXME: This should not happen! */
+		/* assert(0); */
+		LOG_ERROR("JTAG API jtag_execute_queue() called on non JTAG interface");
+		if (!jtag->jtag_ops || !jtag->jtag_ops->execute_queue)
+			return ERROR_OK;
+	}
+
+	return jtag->jtag_ops->execute_queue();
 }
 
 void jtag_execute_queue_noclear(void)
@@ -1335,7 +1340,7 @@ int adapter_init(struct command_context *cmd_ctx)
 	if (jtag)
 		return ERROR_OK;
 
-	if (!jtag_interface) {
+	if (!adapter_driver) {
 		/* nothing was previously specified by "interface" command */
 		LOG_ERROR("Debug Adapter has to be specified, "
 			"see \"interface\" command");
@@ -1343,23 +1348,10 @@ int adapter_init(struct command_context *cmd_ctx)
 	}
 
 	int retval;
-	retval = jtag_interface->init();
+	retval = adapter_driver->init();
 	if (retval != ERROR_OK)
 		return retval;
-	jtag = jtag_interface;
-
-	/* LEGACY SUPPORT ... adapter drivers  must declare what
-	 * transports they allow.  Until they all do so, assume
-	 * the legacy drivers are JTAG-only
-	 */
-	if (!transports_are_declared()) {
-		LOG_ERROR("Adapter driver '%s' did not declare "
-			"which transports it allows; assuming "
-			"JTAG-only", jtag->name);
-		retval = allow_transports(cmd_ctx, jtag_only);
-		if (retval != ERROR_OK)
-			return retval;
-	}
+	jtag = adapter_driver;
 
 	if (jtag->speed == NULL) {
 		LOG_INFO("This adapter doesn't support configurable speed");
@@ -1506,10 +1498,9 @@ int swd_init_reset(struct command_context *cmd_ctx)
 	LOG_DEBUG("Initializing with hard SRST reset");
 
 	if (jtag_reset_config & RESET_HAS_SRST)
-		swd_add_reset(1);
-	swd_add_reset(0);
-	retval = jtag_execute_queue();
-	return retval;
+		adapter_assert_reset();
+	adapter_deassert_reset();
+	return ERROR_OK;
 }
 
 int jtag_init_reset(struct command_context *cmd_ctx)
@@ -1611,14 +1602,18 @@ static int adapter_khz_to_speed(unsigned khz, int *speed)
 {
 	LOG_DEBUG("convert khz to interface specific speed value");
 	speed_khz = khz;
-	if (jtag != NULL) {
-		LOG_DEBUG("have interface set up");
-		int speed_div1;
-		int retval = jtag->khz(jtag_get_speed_khz(), &speed_div1);
-		if (ERROR_OK != retval)
-			return retval;
-		*speed = speed_div1;
+	if (!jtag)
+		return ERROR_OK;
+	LOG_DEBUG("have interface set up");
+	if (!jtag->khz) {
+		LOG_ERROR("Translation from khz to jtag_speed not implemented");
+		return ERROR_FAIL;
 	}
+	int speed_div1;
+	int retval = jtag->khz(jtag_get_speed_khz(), &speed_div1);
+	if (ERROR_OK != retval)
+		return retval;
+	*speed = speed_div1;
 	return ERROR_OK;
 }
 
@@ -1681,7 +1676,13 @@ int jtag_get_speed_readable(int *khz)
 	int retval = jtag_get_speed(&jtag_speed_var);
 	if (retval != ERROR_OK)
 		return retval;
-	return jtag ? jtag->speed_div(jtag_speed_var, khz) : ERROR_OK;
+	if (!jtag)
+		return ERROR_OK;
+	if (!jtag->speed_div) {
+		LOG_ERROR("Translation from jtag_speed to khz not implemented");
+		return ERROR_FAIL;
+	}
+	return jtag->speed_div(jtag_speed_var, khz);
 }
 
 void jtag_set_verify(bool enable)
@@ -1712,12 +1713,20 @@ int jtag_power_dropout(int *dropout)
 		LOG_ERROR("No Valid JTAG Interface Configured.");
 		exit(-1);
 	}
-	return jtag->power_dropout(dropout);
+	if (jtag->power_dropout)
+		return jtag->power_dropout(dropout);
+
+	*dropout = 0; /* by default we can't detect power dropout */
+	return ERROR_OK;
 }
 
 int jtag_srst_asserted(int *srst_asserted)
 {
-	return jtag->srst_asserted(srst_asserted);
+	if (jtag->srst_asserted)
+		return jtag->srst_asserted(srst_asserted);
+
+	*srst_asserted = 0; /* by default we can't detect srst asserted */
+	return ERROR_OK;
 }
 
 enum reset_types jtag_get_reset_config(void)
@@ -1821,8 +1830,9 @@ void adapter_assert_reset(void)
 			jtag_add_reset(1, 1);
 		else
 			jtag_add_reset(0, 1);
-	} else if (transport_is_swd())
-		swd_add_reset(1);
+	} else if (transport_is_swd() || transport_is_hla() ||
+			   transport_is_dapdirect_jtag() || transport_is_dapdirect_swd())
+		(void)adapter_system_reset(1);
 	else if (get_current_transport() != NULL)
 		LOG_ERROR("reset is not supported on %s",
 			get_current_transport()->name);
@@ -1834,8 +1844,9 @@ void adapter_deassert_reset(void)
 {
 	if (transport_is_jtag())
 		jtag_add_reset(0, 0);
-	else if (transport_is_swd())
-		swd_add_reset(0);
+	else if (transport_is_swd() || transport_is_hla() ||
+			 transport_is_dapdirect_jtag() || transport_is_dapdirect_swd())
+		(void)adapter_system_reset(0);
 	else if (get_current_transport() != NULL)
 		LOG_ERROR("reset is not supported on %s",
 			get_current_transport()->name);

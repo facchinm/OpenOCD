@@ -77,8 +77,8 @@ static bool swd_mode;
 #define CMD_DAP_RESET_TARGET      0x0A
 
 /* CMD_INFO */
-#define INFO_ID_VENDOR            0x01      /* string */
-#define INFO_ID_PRODUCT           0x02      /* string */
+#define INFO_ID_VID               0x00      /* string */
+#define INFO_ID_PID               0x02      /* string */
 #define INFO_ID_SERNUM            0x03      /* string */
 #define INFO_ID_FW_VER            0x04      /* string */
 #define INFO_ID_TD_VEND           0x05      /* string */
@@ -1126,6 +1126,20 @@ static int cmsis_dap_quit(void)
 	return ERROR_OK;
 }
 
+static int cmsis_dap_system_reset(int req_srst)
+{
+	if (req_srst)
+		output_pins &= ~SWJ_PIN_SRST;
+	else
+		output_pins |= SWJ_PIN_SRST;
+
+	int retval = cmsis_dap_cmd_DAP_SWJ_Pins(output_pins,
+			SWJ_PIN_SRST, 0, NULL);
+	if (retval != ERROR_OK)
+		LOG_ERROR("CMSIS-DAP: Interface srst failed");
+	return retval;
+}
+
 static void cmsis_dap_execute_reset(struct jtag_command *cmd)
 {
 	/* Set both TRST and SRST even if they're not enabled as
@@ -1653,15 +1667,6 @@ static int cmsis_dap_khz(int khz, int *jtag_speed)
 	return ERROR_OK;
 }
 
-static int_least32_t cmsis_dap_swd_frequency(int_least32_t hz)
-{
-	if (hz > 0)
-		cmsis_dap_speed(hz / 1000);
-
-	return hz;
-}
-
-
 COMMAND_HANDLER(cmsis_dap_handle_info_command)
 {
 	if (cmsis_dap_get_version_info() == ERROR_OK)
@@ -1790,7 +1795,6 @@ static const struct command_registration cmsis_dap_command_handlers[] = {
 
 static const struct swd_driver cmsis_dap_swd_driver = {
 	.init = cmsis_dap_swd_init,
-	.frequency = cmsis_dap_swd_frequency,
 	.switch_seq = cmsis_dap_swd_switch_seq,
 	.read_reg = cmsis_dap_swd_read_reg,
 	.write_reg = cmsis_dap_swd_write_reg,
@@ -1799,17 +1803,23 @@ static const struct swd_driver cmsis_dap_swd_driver = {
 
 static const char * const cmsis_dap_transport[] = { "swd", "jtag", NULL };
 
-struct jtag_interface cmsis_dap_interface = {
-	.name = "cmsis-dap",
+static struct jtag_interface cmsis_dap_interface = {
 	.supported = DEBUG_CAP_TMS_SEQ,
-	.commands = cmsis_dap_command_handlers,
-	.swd = &cmsis_dap_swd_driver,
-	.transports = cmsis_dap_transport,
-
 	.execute_queue = cmsis_dap_execute_queue,
-	.speed = cmsis_dap_speed,
-	.speed_div = cmsis_dap_speed_div,
-	.khz = cmsis_dap_khz,
+};
+
+struct adapter_driver cmsis_dap_adapter_driver = {
+	.name = "cmsis-dap",
+	.transports = cmsis_dap_transport,
+	.commands = cmsis_dap_command_handlers,
+
 	.init = cmsis_dap_init,
 	.quit = cmsis_dap_quit,
+	.system_reset = cmsis_dap_system_reset,
+	.speed = cmsis_dap_speed,
+	.khz = cmsis_dap_khz,
+	.speed_div = cmsis_dap_speed_div,
+
+	.jtag_ops = &cmsis_dap_interface,
+	.swd_ops = &cmsis_dap_swd_driver,
 };

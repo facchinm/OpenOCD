@@ -213,14 +213,6 @@ static const uint8_t swd_seq_dormant_to_jtag[] = {
 };
 static const unsigned swd_seq_dormant_to_jtag_len = 160;
 
-enum swd_special_seq {
-	LINE_RESET,
-	JTAG_TO_SWD,
-	SWD_TO_JTAG,
-	SWD_TO_DORMANT,
-	DORMANT_TO_SWD,
-};
-
 struct swd_driver {
 	/**
 	 * Initialize the debug link so it can perform SWD operations.
@@ -231,24 +223,6 @@ struct swd_driver {
 	 * @return ERROR_OK on success, else a negative fault code.
 	 */
 	int (*init)(void);
-
-	/**
-	 * Set the SWCLK frequency of the SWD link.
-	 *
-	 * The driver should round the desired value, downwards if possible, to
-	 * the nearest supported frequency. A negative value should be ignored
-	 * and can be used to query the current setting. If the driver does not
-	 * support a variable frequency a fixed, nominal, value should be
-	 * returned.
-	 *
-	 * If the frequency is increased, it must not apply before the currently
-	 * queued transactions are executed. If the frequency is lowered, it may
-	 * apply immediately.
-	 *
-	 * @param hz The desired frequency in Hz.
-	 * @return The actual resulting frequency after rounding.
-	 */
-	int_least32_t (*frequency)(int_least32_t hz);
 
 	/**
 	 * Queue a special SWDIO sequence.
@@ -303,6 +277,5 @@ struct swd_driver {
 };
 
 int swd_init_reset(struct command_context *cmd_ctx);
-void swd_add_reset(int req_srst);
 
 #endif /* OPENOCD_JTAG_SWD_H */

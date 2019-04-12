@@ -153,8 +153,6 @@ static int gdb_last_signal(struct target *target)
 			return 0x05;	/* SIGTRAP */
 		case DBG_REASON_SINGLESTEP:
 			return 0x05;	/* SIGTRAP */
-		case DBG_REASON_EXC_CATCH:
-			return 0x05;
 		case DBG_REASON_NOTHALTED:
 			return 0x0;		/* no signal... shouldn't happen */
 		default:
@@ -903,7 +901,6 @@ static void gdb_frontend_halted(struct target *target, struct connection *connec
 static int gdb_target_callback_event_handler(struct target *target,
 		enum target_event event, void *priv)
 {
-	int retval;
 	struct connection *connection = priv;
 	struct gdb_service *gdb_service = connection->service->priv;
 
@@ -916,11 +913,6 @@ static int gdb_target_callback_event_handler(struct target *target,
 			break;
 		case TARGET_EVENT_HALTED:
 			target_call_event_callbacks(target, TARGET_EVENT_GDB_END);
-			break;
-		case TARGET_EVENT_GDB_FLASH_ERASE_START:
-			retval = jtag_execute_queue();
-			if (retval != ERROR_OK)
-				return retval;
 			break;
 		default:
 			break;
@@ -1437,7 +1429,7 @@ static int gdb_read_memory_packet(struct connection *connection,
 
 	if (!len) {
 		LOG_WARNING("invalid read memory packet received (len == 0)");
-		gdb_put_packet(connection, "", 0);
+		gdb_put_packet(connection, NULL, 0);
 		return ERROR_OK;
 	}
 
@@ -1921,10 +1913,11 @@ static int gdb_memory_map(struct connection *connection,
 	if (ram_start != 0)
 		xml_printf(&retval, &xml, &pos, &size,
 			"<memory type=\"ram\" start=\"" TARGET_ADDR_FMT "\" "
-			"length=\"" TARGET_ADDR_FMT "\"/>\n",
-			ram_start, target_address_max(target) - ram_start + 1);
-	/* ELSE a flash chip could be at the very end of the address space, in
-	 * which case ram_start will be precisely 0 */
+			"length=\"0x%x\"/>\n",
+			ram_start, 0-ram_start);
+	/* ELSE a flash chip could be at the very end of the 32 bit address
+	 * space, in which case ram_start will be precisely 0
+	 */
 
 	free(banks);
 
@@ -2849,7 +2842,7 @@ static bool gdb_handle_vcont_packet(struct connection *connection, const char *p
 			if (gdb_connection->sync) {
 				gdb_connection->sync = false;
 				if (ct->state == TARGET_HALTED) {
-					LOG_DEBUG("stepi ignored. GDB will now fetch the register state " \
+					LOG_WARNING("stepi ignored. GDB will now fetch the register state " \
 									"from the target.");
 					gdb_sig_halted(connection);
 					log_remove_callback(gdb_log_callback, connection);
@@ -3233,7 +3226,7 @@ static int gdb_input_inner(struct connection *connection)
 						 * make only the single stepping have the sync feature...
 						 */
 						nostep = true;
-						LOG_DEBUG("stepi ignored. GDB will now fetch the register state " \
+						LOG_WARNING("stepi ignored. GDB will now fetch the register state " \
 								"from the target.");
 					}
 					gdb_con->sync = false;
@@ -3336,7 +3329,7 @@ static int gdb_input_inner(struct connection *connection)
 				default:
 					/* ignore unknown packets */
 					LOG_DEBUG("ignoring 0x%2.2x packet", packet[0]);
-					gdb_put_packet(connection, "", 0);
+					gdb_put_packet(connection, NULL, 0);
 					break;
 			}
 

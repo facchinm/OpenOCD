@@ -53,11 +53,11 @@
  *
  * This code uses information contained in the MPSSE specification which was
  * found here:
- * https://www.ftdichip.com/Support/Documents/AppNotes/AN2232C-01_MPSSE_Cmnd.pdf
+ * http://www.ftdichip.com/Documents/AppNotes/AN2232C-01_MPSSE_Cmnd.pdf
  * Hereafter this is called the "MPSSE Spec".
  *
- * The datasheet for the ftdichip.com's FT2232H part is here:
- * https://www.ftdichip.com/Support/Documents/DataSheets/ICs/DS_FT2232H.pdf
+ * The datasheet for the ftdichip.com's FT2232D part is here:
+ * http://www.ftdichip.com/Documents/DataSheets/DS_FT2232D.pdf
  *
  * Also note the issue with code 0x4b (clock data to TMS) noted in
  * http://developer.intra2net.com/mailarchive/html/libftdi/2009/msg00292.html
@@ -69,7 +69,6 @@
 #endif
 
 /* project specific includes */
-#include <jtag/drivers/jtag_usb_common.h>
 #include <jtag/interface.h>
 #include <jtag/swd.h>
 #include <transport/transport.h>
@@ -90,6 +89,7 @@
 
 static char *ftdi_device_desc;
 static char *ftdi_serial;
+static char *ftdi_location;
 static uint8_t ftdi_channel;
 static uint8_t ftdi_jtag_mode = JTAG_MODE;
 
@@ -658,7 +658,7 @@ static int ftdi_initialize(void)
 
 	for (int i = 0; ftdi_vid[i] || ftdi_pid[i]; i++) {
 		mpsse_ctx = mpsse_open(&ftdi_vid[i], &ftdi_pid[i], ftdi_device_desc,
-				ftdi_serial, jtag_usb_get_location(), ftdi_channel);
+				ftdi_serial, ftdi_location, ftdi_channel);
 		if (mpsse_ctx)
 			break;
 	}
@@ -704,9 +704,33 @@ static int ftdi_quit(void)
 
 	free(ftdi_device_desc);
 	free(ftdi_serial);
+	free(ftdi_location);
 
 	free(swd_cmd_queue);
 
+	return ERROR_OK;
+}
+
+static int ftdi_system_reset(int req_srst)
+{
+	struct signal *srst = find_signal_by_name("nSRST");
+
+	if (!srst) {
+		if (req_srst)
+			LOG_ERROR("Can't assert SRST: nSRST signal is not defined");
+		return ERROR_FAIL;
+	}
+
+	if (req_srst) {
+		ftdi_set_signal(srst, '0');
+	} else {
+		if (jtag_get_reset_config() & RESET_SRST_PUSH_PULL)
+			ftdi_set_signal(srst, '1');
+		else
+			ftdi_set_signal(srst, 'z');
+	}
+
+	DEBUG_JTAG_IO("srst: %i", req_srst);
 	return ERROR_OK;
 }
 
@@ -735,6 +759,21 @@ COMMAND_HANDLER(ftdi_handle_serial_command)
 
 	return ERROR_OK;
 }
+
+#ifdef HAVE_LIBUSB_GET_PORT_NUMBERS
+COMMAND_HANDLER(ftdi_handle_location_command)
+{
+	if (CMD_ARGC == 1) {
+		if (ftdi_location)
+			free(ftdi_location);
+		ftdi_location = strdup(CMD_ARGV[0]);
+	} else {
+		return ERROR_COMMAND_SYNTAX_ERROR;
+	}
+
+	return ERROR_OK;
+}
+#endif
 
 COMMAND_HANDLER(ftdi_handle_channel_command)
 {
@@ -950,6 +989,15 @@ static const struct command_registration ftdi_command_handlers[] = {
 		.help = "set the serial number of the FTDI device",
 		.usage = "serial_string",
 	},
+#ifdef HAVE_LIBUSB_GET_PORT_NUMBERS
+	{
+		.name = "ftdi_location",
+		.handler = &ftdi_handle_location_command,
+		.mode = COMMAND_CONFIG,
+		.help = "set the USB bus location of the FTDI device",
+		.usage = "<bus>:port[,port]...",
+	},
+#endif
 	{
 		.name = "ftdi_channel",
 		.handler = &ftdi_handle_channel_command,
@@ -1055,7 +1103,7 @@ static void ftdi_swd_swdio_en(bool enable)
 		if (oe->data_mask)
 			ftdi_set_signal(oe, enable ? '1' : '0');
 		else {
-			/* Sets TDI/DO pin to input during rx when both pins are connected
+			/* Sets TDI/DO pin (pin 2) to input during rx when both pins are connected
 			   to SWDIO */
 			if (enable)
 				direction |= jtag_direction_init & 0x0002U;
@@ -1203,14 +1251,6 @@ static void ftdi_swd_write_reg(uint8_t cmd, uint32_t value, uint32_t ap_delay_cl
 	ftdi_swd_queue_cmd(cmd, NULL, value, ap_delay_clk);
 }
 
-static int_least32_t ftdi_swd_frequency(int_least32_t hz)
-{
-	if (hz > 0)
-		freq = mpsse_set_frequency(mpsse_ctx, hz);
-
-	return freq;
-}
-
 static int ftdi_swd_switch_seq(enum swd_special_seq seq)
 {
 	switch (seq) {
@@ -1239,7 +1279,6 @@ static int ftdi_swd_switch_seq(enum swd_special_seq seq)
 
 static const struct swd_driver ftdi_swd = {
 	.init = ftdi_swd_init,
-	.frequency = ftdi_swd_frequency,
 	.switch_seq = ftdi_swd_switch_seq,
 	.read_reg = ftdi_swd_read_reg,
 	.write_reg = ftdi_swd_write_reg,
@@ -1248,17 +1287,23 @@ static const struct swd_driver ftdi_swd = {
 
 static const char * const ftdi_transports[] = { "jtag", "swd", NULL };
 
-struct jtag_interface ftdi_interface = {
-	.name = "ftdi",
+static struct jtag_interface ftdi_interface = {
 	.supported = DEBUG_CAP_TMS_SEQ,
-	.commands = ftdi_command_handlers,
+	.execute_queue = ftdi_execute_queue,
+};
+
+struct adapter_driver ftdi_adapter_driver = {
+	.name = "ftdi",
 	.transports = ftdi_transports,
-	.swd = &ftdi_swd,
+	.commands = ftdi_command_handlers,
 
 	.init = ftdi_initialize,
 	.quit = ftdi_quit,
+	.system_reset = ftdi_system_reset,
 	.speed = ftdi_speed,
-	.speed_div = ftdi_speed_div,
 	.khz = ftdi_khz,
-	.execute_queue = ftdi_execute_queue,
+	.speed_div = ftdi_speed_div,
+
+	.jtag_ops = &ftdi_interface,
+	.swd_ops = &ftdi_swd,
 };

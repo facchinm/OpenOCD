@@ -527,18 +527,26 @@ static const struct command_registration sysfsgpio_command_handlers[] = {
 
 static int sysfsgpio_init(void);
 static int sysfsgpio_quit(void);
+static int sysfsgpio_system_reset(int req_srst);
 
 static const char * const sysfsgpio_transports[] = { "jtag", "swd", NULL };
 
-struct jtag_interface sysfsgpio_interface = {
-	.name = "sysfsgpio",
+static struct jtag_interface sysfsgpio_interface = {
 	.supported = DEBUG_CAP_TMS_SEQ,
 	.execute_queue = bitbang_execute_queue,
+};
+
+struct adapter_driver sysfsgpio_adapter_driver = {
+	.name = "sysfsgpio",
 	.transports = sysfsgpio_transports,
-	.swd = &bitbang_swd,
 	.commands = sysfsgpio_command_handlers,
+
 	.init = sysfsgpio_init,
 	.quit = sysfsgpio_quit,
+	.system_reset = sysfsgpio_system_reset,
+
+	.jtag_ops = &sysfsgpio_interface,
+	.swd_ops = &bitbang_swd,
 };
 
 static struct bitbang_interface sysfsgpio_bitbang = {
@@ -689,3 +697,21 @@ static int sysfsgpio_quit(void)
 	return ERROR_OK;
 }
 
+static int sysfsgpio_system_reset(int req_srst)
+{
+	LOG_DEBUG("sysfsgpio_system_reset");
+	const char one[] = "1";
+	const char zero[] = "0";
+	size_t bytes_written;
+
+	if (srst_fd < 0)
+		return ERROR_FAIL;
+
+	/* assume active low */
+	bytes_written = write(srst_fd, req_srst ? &zero : &one, 1);
+	if (bytes_written != 1) {
+		LOG_WARNING("writing srst failed");
+		return ERROR_FAIL;
+	}
+	return ERROR_OK;
+}

@@ -34,6 +34,7 @@
 static int buspirate_execute_queue(void);
 static int buspirate_init(void);
 static int buspirate_quit(void);
+static int buspirate_system_reset(int req_srst);
 
 static void buspirate_end_state(tap_state_t state);
 static void buspirate_state_move(void);
@@ -371,6 +372,18 @@ static int buspirate_quit(void)
 	return ERROR_OK;
 }
 
+static int buspirate_system_reset(int req_srst)
+{
+	LOG_DEBUG("srst: %i", req_srst);
+
+	if (req_srst)
+		buspirate_set_feature(buspirate_fd, FEATURE_SRST, ACTION_DISABLE);
+	else
+		buspirate_set_feature(buspirate_fd, FEATURE_SRST, ACTION_ENABLE);
+
+	return ERROR_OK;
+}
+
 /* openocd command interface */
 COMMAND_HANDLER(buspirate_handle_adc_command)
 {
@@ -547,14 +560,21 @@ static const struct swd_driver buspirate_swd = {
 
 static const char * const buspirate_transports[] = { "jtag", "swd", NULL };
 
-struct jtag_interface buspirate_interface = {
-	.name = "buspirate",
+static struct jtag_interface buspirate_interface = {
 	.execute_queue = buspirate_execute_queue,
-	.commands = buspirate_command_handlers,
+};
+
+struct adapter_driver buspirate_adapter_driver = {
+	.name = "buspirate",
 	.transports = buspirate_transports,
-	.swd = &buspirate_swd,
+	.commands = buspirate_command_handlers,
+
 	.init = buspirate_init,
-	.quit = buspirate_quit
+	.quit = buspirate_quit,
+	.system_reset = buspirate_system_reset,
+
+	.jtag_ops = &buspirate_interface,
+	.swd_ops = &buspirate_swd,
 };
 
 /*************** jtag execute commands **********************/

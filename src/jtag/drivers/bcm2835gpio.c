@@ -58,6 +58,7 @@ static void bcm2835_swdio_drive(bool is_output);
 
 static int bcm2835gpio_init(void);
 static int bcm2835gpio_quit(void);
+static int bcm2835gpio_system_reset(int req_srst);
 
 static struct bitbang_interface bcm2835gpio_bitbang = {
 	.read = bcm2835gpio_read,
@@ -391,18 +392,25 @@ static const struct command_registration bcm2835gpio_command_handlers[] = {
 
 static const char * const bcm2835_transports[] = { "jtag", "swd", NULL };
 
-struct jtag_interface bcm2835gpio_interface = {
-	.name = "bcm2835gpio",
+static struct jtag_interface bcm2835gpio_interface = {
 	.supported = DEBUG_CAP_TMS_SEQ,
 	.execute_queue = bitbang_execute_queue,
+};
+
+struct adapter_driver bcm2835gpio_adapter_driver = {
+	.name = "bcm2835gpio",
 	.transports = bcm2835_transports,
-	.swd = &bitbang_swd,
+	.commands = bcm2835gpio_command_handlers,
+
+	.init = bcm2835gpio_init,
+	.quit = bcm2835gpio_quit,
+	.system_reset = bcm2835gpio_system_reset,
 	.speed = bcm2835gpio_speed,
 	.khz = bcm2835gpio_khz,
 	.speed_div = bcm2835gpio_speed_div,
-	.commands = bcm2835gpio_command_handlers,
-	.init = bcm2835gpio_init,
-	.quit = bcm2835gpio_quit,
+
+	.jtag_ops = &bcm2835gpio_interface,
+	.swd_ops = &bitbang_swd,
 };
 
 static bool bcm2835gpio_jtag_mode_possible(void)
@@ -528,6 +536,20 @@ static int bcm2835gpio_quit(void)
 		SET_MODE_GPIO(trst_gpio, trst_gpio_mode);
 	if (srst_gpio != -1)
 		SET_MODE_GPIO(srst_gpio, srst_gpio_mode);
+
+	return ERROR_OK;
+}
+
+static int bcm2835gpio_system_reset(int req_srst)
+{
+	if (srst_gpio <= 0)
+		return ERROR_FAIL;
+
+	/* Signal is active low. */
+	if (req_srst)
+		GPIO_CLR = 1 << srst_gpio;
+	else
+		GPIO_SET = 1 << srst_gpio;
 
 	return ERROR_OK;
 }

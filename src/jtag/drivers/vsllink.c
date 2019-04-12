@@ -277,6 +277,19 @@ static void vsllink_free_buffer(void)
 	}
 }
 
+static int vsllink_system_reset(int req_srst)
+{
+	LOG_DEBUG("srst: %i", req_srst);
+
+	if (req_srst)
+		versaloon_interface.adaptors.gpio.config(0, GPIO_SRST, GPIO_SRST, 0, 0);
+	else
+		versaloon_interface.adaptors.gpio.config(0, GPIO_SRST, 0, GPIO_SRST, GPIO_SRST);
+
+	versaloon_interface.adaptors.peripheral_commit();
+	return ERROR_OK;
+}
+
 static int vsllink_quit(void)
 {
 	versaloon_interface.adaptors.gpio.config(0, GPIO_SRST | GPIO_TRST,
@@ -952,24 +965,29 @@ static const char * const vsllink_transports[] = {"jtag", "swd", NULL};
 
 static const struct swd_driver vsllink_swd_driver = {
 	.init = vsllink_swd_init,
-	.frequency = vsllink_swd_frequency,
 	.switch_seq = vsllink_swd_switch_seq,
 	.read_reg = vsllink_swd_read_reg,
 	.write_reg = vsllink_swd_write_reg,
 	.run = vsllink_swd_run_queue,
 };
 
-struct jtag_interface vsllink_interface = {
-	.name = "vsllink",
+static struct jtag_interface vsllink_interface = {
 	.supported = DEBUG_CAP_TMS_SEQ,
-	.commands = vsllink_command_handlers,
+	.execute_queue = vsllink_execute_queue,
+};
+
+struct adapter_driver vsllink_adapter_driver = {
+	.name = "vsllink",
 	.transports = vsllink_transports,
-	.swd = &vsllink_swd_driver,
+	.commands = vsllink_command_handlers,
 
 	.init = vsllink_init,
 	.quit = vsllink_quit,
-	.khz = vsllink_khz,
+	.system_reset = vsllink_system_reset,
 	.speed = vsllink_speed,
+	.khz = vsllink_khz,
 	.speed_div = vsllink_speed_div,
-	.execute_queue = vsllink_execute_queue,
+
+	.jtag_ops = &vsllink_interface,
+	.swd_ops = &vsllink_swd_driver,
 };

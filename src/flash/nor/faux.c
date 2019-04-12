@@ -113,7 +113,7 @@ static const struct command_registration faux_command_handlers[] = {
 	COMMAND_REGISTRATION_DONE
 };
 
-const struct flash_driver faux_flash = {
+struct flash_driver faux_flash = {
 	.name = "faux",
 	.commands = faux_command_handlers,
 	.flash_bank_command = faux_flash_bank_command,
