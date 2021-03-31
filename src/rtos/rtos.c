@@ -29,6 +29,7 @@ static const struct rtos_type *rtos_types[] = {
 	&riot_rtos,
 	&zephyr_rtos,
 	&rtkernel_rtos,
+	&rtx5_rtos,
 	/* keep this as last, as it always matches with rtos auto */
 	&hwthread_rtos,
 	NULL
