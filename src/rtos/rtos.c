@@ -40,6 +40,7 @@ extern struct rtos_type nuttx_rtos;
 extern struct rtos_type hwthread_rtos;
 extern struct rtos_type riot_rtos;
 extern struct rtos_type zephyr_rtos;
+extern struct rtos_type rtx5_rtos;
 
 static struct rtos_type *rtos_types[] = {
 	&threadx_rtos,
@@ -54,6 +55,7 @@ static struct rtos_type *rtos_types[] = {
 	&nuttx_rtos,
 	&riot_rtos,
 	&zephyr_rtos,
+	&rtx5_rtos,
 	/* keep this as last, as it always matches with rtos auto */
 	&hwthread_rtos,
 	NULL
