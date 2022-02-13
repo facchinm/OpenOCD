@@ -63,14 +63,14 @@ static const struct rtx5_params rtx5_params_list[] = {
 		.target_name = "hla_target",
 		.ptr_size = 4,
 		.task_offset_sp = SP_OFFSET,
-		.stacking = &rtos_standard_Cortex_M3_stacking,
+		.stacking = &rtos_standard_cortex_m3_stacking,
 		.stacking_fpu = NULL, // TODO
 	},
 	{
 		.target_name = "cortex_m",
 		.ptr_size = 4,
 		.task_offset_sp = SP_OFFSET,
-		.stacking = &rtos_standard_Cortex_M3_stacking,
+		.stacking = &rtos_standard_cortex_m3_stacking,
 		.stacking_fpu = NULL, // TODO
 	},
 };
@@ -146,9 +146,9 @@ static int rtx5_get_current_task_ptr(struct rtos *rtos, uint32_t *current_task)
 			       current_task);
 }
 
-static int getThreadList(struct rtos *rtos, uint32_t offset, uint32_t next_offset, void (*action)(struct rtos *rtos, uint32_t task, uint32_t index), uint32_t index) {
+static int getThreadList(struct rtos *rtos, uint32_t offset, uint32_t next_offset, void (*action)(struct rtos *rtos, uint32_t task, int index), int* index) {
 	uint32_t task;
-	int ret, found = 0;
+	int ret = 0;
 
 	ret = target_read_u32(rtos->target,
 			      rtos->symbols[RTX5_INFO].address + offset,
@@ -157,27 +157,27 @@ static int getThreadList(struct rtos *rtos, uint32_t offset, uint32_t next_offse
 	while (ret == ERROR_OK && task != 0) {
 
 		if (action != NULL) {
-			action(rtos, task, index + found);
+			action(rtos, task, (int)*index);
 		}
 
 		ret = target_read_u32(rtos->target,
 			      task + next_offset,
 			      &task);
 
-		found++;
+		*index = *index + 1;
 
 		if (next_offset == 0) {
 			break;
 		}
 	}
-	return found;
+	return *index;
 }
 
-static void populateThreadInfo(struct rtos *rtos, uint32_t thread_ptr, uint32_t tasks_found) {
+static void populateThreadInfo(struct rtos *rtos, uint32_t thread_ptr, int id) {
 
 	char thread_str_buf[RTX5_MAX_NAME];
 
-	rtos->thread_details[tasks_found].threadid = thread_ptr;
+	rtos->thread_details[id].threadid = thread_ptr;
 
 	uint32_t name_ptr;
 	target_read_u32(rtos->target, thread_ptr + NAME_OFFSET, &name_ptr);
@@ -190,7 +190,7 @@ static void populateThreadInfo(struct rtos *rtos, uint32_t thread_ptr, uint32_t 
 		return;
 	}
 
-	rtos->thread_details[tasks_found].thread_name_str = strdup(thread_str_buf);
+	rtos->thread_details[id].thread_name_str = strdup(thread_str_buf);
 
 	uint8_t state;
 	uint8_t priority;
@@ -201,20 +201,20 @@ static void populateThreadInfo(struct rtos *rtos, uint32_t thread_ptr, uint32_t 
 	snprintf(thread_str_buf, sizeof(thread_str_buf),
 		"State: %s, Priority: %u\n", state < 5 ? rtx5_states[state] : rtx5_states[state / 0x10 + 4], priority);
 
-	rtos->thread_details[tasks_found].extra_info_str = strdup(thread_str_buf);
-	rtos->thread_details[tasks_found].exists = true;
+	rtos->thread_details[id].extra_info_str = strdup(thread_str_buf);
+	rtos->thread_details[id].exists = true;
 }
 
 static int rtx5_get_num_tasks(struct rtos *rtos, int *num_tasks)
 {
 	int found = 0;
 
-	found += getThreadList(rtos, THREADLIST_OFFSET, THREADNEXT_OFFSET, NULL, 0);
-	found += getThreadList(rtos, DELAYLIST_OFFSET, DELAYNEXT_OFFSET, NULL, 0);
-	found += getThreadList(rtos, WAITLIST_OFFSET, DELAYNEXT_OFFSET, NULL, 0);
-	found += getThreadList(rtos, CURRENT_OFFSET, 0, NULL, 0);
+	getThreadList(rtos, CURRENT_OFFSET, 0, NULL, &found);
+	getThreadList(rtos, THREADLIST_OFFSET, THREADNEXT_OFFSET, NULL, &found);
+	getThreadList(rtos, DELAYLIST_OFFSET, DELAYNEXT_OFFSET, NULL, &found);
+	getThreadList(rtos, WAITLIST_OFFSET, DELAYNEXT_OFFSET, NULL, &found);
 
-	*num_tasks = found + 1;
+	*num_tasks = found;
 
 	return ERROR_OK;
 }
@@ -255,34 +255,18 @@ static int rtx5_update_threads(struct rtos *rtos)
 	/* Nuke the old tasks */
 	rtos_free_threadlist(rtos);
 
-	if (!rtos->current_thread || !num_tasks) {
-		num_tasks++;
-
-		rtos->thread_details = malloc(
-				sizeof(struct thread_detail) * num_tasks);
-		rtos->thread_details->threadid = 1;
-		rtos->thread_details->exists = true;
-		rtos->thread_details->extra_info_str = NULL;
-		rtos->thread_details->thread_name_str = strdup("Current Execution");
-
-		if (!num_tasks) {
-			rtos->thread_count = 1;
-			return ERROR_OK;
-		}
-	} else {
-		/* create space for new thread details */
-		rtos->thread_details = malloc(
-				sizeof(struct thread_detail) * num_tasks);
-	}
+	/* create space for new thread details */
+	rtos->thread_details = malloc(
+			sizeof(struct thread_detail) * num_tasks);
 
 	rtos->current_thread = current_task;
 
 	tasks_found = 0;
 
-	tasks_found += getThreadList(rtos, THREADLIST_OFFSET, THREADNEXT_OFFSET, populateThreadInfo, tasks_found);
-	tasks_found += getThreadList(rtos, DELAYLIST_OFFSET, DELAYNEXT_OFFSET, populateThreadInfo, tasks_found);
-	tasks_found += getThreadList(rtos, WAITLIST_OFFSET, DELAYNEXT_OFFSET, populateThreadInfo, tasks_found);
-	tasks_found += getThreadList(rtos, CURRENT_OFFSET, 0, populateThreadInfo, tasks_found);
+	getThreadList(rtos, CURRENT_OFFSET, 0, populateThreadInfo, &tasks_found);
+	getThreadList(rtos, THREADLIST_OFFSET, THREADNEXT_OFFSET, populateThreadInfo, &tasks_found);
+	getThreadList(rtos, DELAYLIST_OFFSET, DELAYNEXT_OFFSET, populateThreadInfo, &tasks_found);
+	getThreadList(rtos, WAITLIST_OFFSET, DELAYNEXT_OFFSET, populateThreadInfo, &tasks_found);
 
 	rtos->thread_count = tasks_found;
 
@@ -310,12 +294,12 @@ static int rtx5_get_thread_reg_list(struct rtos *rtos,
 				       stack_ptr, reg_list, num_regs);
 }
 
-static int rtx5_get_symbol_list_to_lookup(struct symbol_table_elem_struct *symbol_list[])
+static int rtx5_get_symbol_list_to_lookup(struct symbol_table_elem *symbol_list[])
 {
 	size_t s;
 
-	*symbol_list = calloc(ARRAY_SIZE(rtx5_symbol_list),
-			      sizeof(struct symbol_table_elem_struct));
+	*symbol_list = calloc(ARRAY_SIZE(rtx5_symbol_list), sizeof(struct symbol_table_elem));
+
 	if (!(*symbol_list)) {
 		LOG_ERROR("RTX5: out of memory");
 		return ERROR_FAIL;
