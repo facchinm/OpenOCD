@@ -38,7 +38,7 @@ static const int DELAYNEXT_OFFSET = 16;
 static const int STATE_OFFSET = 1;
 static const int NAME_OFFSET = 4;
 static const int PRIORITY_OFFSET = 33;
-//static const int STACKFRAME_OFFSET = 34;
+static const int STACKFRAME_OFFSET = 34;
 static const int SP_OFFSET = 56;
 
 static const char* const rtx5_states[] = {
@@ -58,20 +58,59 @@ static const char* const rtx5_states[] = {
 	"Waiting[MsgPut]",
 };
 
+#include "target/armv7m.h"
+
+static const struct stack_register_offset rtos_rtx5_cortex_m4f_fpu_stack_offsets[] = {
+	{ ARMV7M_R0,   0x60, 32 },		/* r0   */
+	{ ARMV7M_R1,   0x64, 32 },		/* r1   */
+	{ ARMV7M_R2,   0x68, 32 },		/* r2   */
+	{ ARMV7M_R3,   0x6C, 32 },		/* r3   */
+	{ ARMV7M_R4,   0x40, 32 },		/* r4   */
+	{ ARMV7M_R5,   0x44, 32 },		/* r5   */
+	{ ARMV7M_R6,   0x48, 32 },		/* r6   */
+	{ ARMV7M_R7,   0x4c, 32 },		/* r7   */
+	{ ARMV7M_R8,   0x50, 32 },		/* r8   */
+	{ ARMV7M_R9,   0x54, 32 },		/* r9   */
+	{ ARMV7M_R10,  0x58, 32 },		/* r10  */
+	{ ARMV7M_R11,  0x5C, 32 },		/* r11  */
+	{ ARMV7M_R12,  0x70, 32 },		/* r12  */
+	{ ARMV7M_R13,  -2,   32 },		/* sp   */
+	{ ARMV7M_R14,  0x74, 32 },		/* lr   */
+	{ ARMV7M_PC,   0x78, 32 },		/* pc   */
+	{ ARMV7M_XPSR, 0x7c, 32 },		/* xPSR */
+};
+
+static target_addr_t rtos_rtx5_cortex_m4f_fpu_stack_align(struct target *target,
+	const uint8_t *stack_data, const struct rtos_register_stacking *stacking,
+	target_addr_t stack_ptr)
+{
+	const int XPSR_OFFSET = 0x7C;
+	return rtos_cortex_m_stack_align(target, stack_data, stacking,
+		stack_ptr, XPSR_OFFSET);
+}
+
+const struct rtos_register_stacking rtos_rtx5_cortex_m4f_fpu_stacking = {
+	.stack_registers_size = 0xc8,
+	.stack_growth_direction = -1,
+	.num_output_registers = ARMV7M_NUM_CORE_REGS,
+	.calculate_process_stack = rtos_rtx5_cortex_m4f_fpu_stack_align,
+	.register_offsets = rtos_rtx5_cortex_m4f_fpu_stack_offsets
+};
+
 static const struct rtx5_params rtx5_params_list[] = {
 	{
 		.target_name = "hla_target",
 		.ptr_size = 4,
 		.task_offset_sp = SP_OFFSET,
 		.stacking = &rtos_standard_cortex_m3_stacking,
-		.stacking_fpu = NULL, // TODO
+		.stacking_fpu = &rtos_rtx5_cortex_m4f_fpu_stacking,
 	},
 	{
 		.target_name = "cortex_m",
 		.ptr_size = 4,
 		.task_offset_sp = SP_OFFSET,
 		.stacking = &rtos_standard_cortex_m3_stacking,
-		.stacking_fpu = NULL, // TODO
+		.stacking_fpu = &rtos_rtx5_cortex_m4f_fpu_stacking,
 	},
 };
 
@@ -290,8 +329,21 @@ static int rtx5_get_thread_reg_list(struct rtos *rtos,
 		return ret;
 	}
 
+	struct armv7m_common *armv7m_target = target_to_armv7m(rtos->target);
+	if (is_armv7m(armv7m_target)) {
+		if (armv7m_target->fp_feature != FP_NONE) {
+			uint8_t stackframe_offset;
+			target_read_u8(rtos->target, threadid + STACKFRAME_OFFSET, &stackframe_offset);
+
+			if ((stackframe_offset & (1 << 4)) == 0) {
+				return rtos_generic_stack_read(rtos->target, params->stacking_fpu,
+						stack_ptr, reg_list, num_regs);
+			}
+		}
+	}
+
 	return rtos_generic_stack_read(rtos->target, params->stacking,
-				       stack_ptr, reg_list, num_regs);
+				stack_ptr, reg_list, num_regs);
 }
 
 static int rtx5_get_symbol_list_to_lookup(struct symbol_table_elem *symbol_list[])
