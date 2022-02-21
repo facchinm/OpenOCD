@@ -21,10 +21,6 @@
 
 struct rtx5_params {
 	const char *target_name;
-	size_t ptr_size;
-	off_t task_offset_next;
-	off_t task_offset_sp;
-	off_t task_offset_delaynext;
 	const struct rtos_register_stacking *stacking;
 	const struct rtos_register_stacking *stacking_fpu;
 };
@@ -100,15 +96,11 @@ const struct rtos_register_stacking rtos_rtx5_cortex_m4f_fpu_stacking = {
 static const struct rtx5_params rtx5_params_list[] = {
 	{
 		.target_name = "hla_target",
-		.ptr_size = 4,
-		.task_offset_sp = SP_OFFSET,
 		.stacking = &rtos_standard_cortex_m3_stacking,
 		.stacking_fpu = &rtos_rtx5_cortex_m4f_fpu_stacking,
 	},
 	{
 		.target_name = "cortex_m",
-		.ptr_size = 4,
-		.task_offset_sp = SP_OFFSET,
 		.stacking = &rtos_standard_cortex_m3_stacking,
 		.stacking_fpu = &rtos_rtx5_cortex_m4f_fpu_stacking,
 	},
