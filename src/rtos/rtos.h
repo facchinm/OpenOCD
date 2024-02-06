@@ -147,6 +147,7 @@ extern const struct rtos_type mqx_rtos;
 extern const struct rtos_type nuttx_rtos;
 extern const struct rtos_type riot_rtos;
 extern const struct rtos_type rtkernel_rtos;
+extern const struct rtos_type rtx5_rtos;
 extern const struct rtos_type threadx_rtos;
 extern const struct rtos_type ucos_iii_rtos;
 extern const struct rtos_type zephyr_rtos;
