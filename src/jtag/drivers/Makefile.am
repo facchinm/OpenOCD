@@ -74,7 +74,11 @@ if FTDI
 DRIVERFILES += %D%/ftdi.c %D%/mpsse.c
 endif
 if LINUXGPIOD
+if LINUXGPIODV2
+DRIVERFILES += %D%/linuxgpiodv2.c
+else
 DRIVERFILES += %D%/linuxgpiod.c
+endif
 endif
 if JTAG_VPI
 DRIVERFILES += %D%/jtag_vpi.c

@@ -669,11 +669,19 @@ PKG_CHECK_MODULES([LIBFTDI], [libftdi1], [
 	PKG_CHECK_MODULES([LIBFTDI], [libftdi], [use_libftdi=yes], [use_libftdi=no])
 ])
 
-PKG_CHECK_MODULES([LIBGPIOD], [libgpiod < 2.0], [
+PKG_CHECK_MODULES([LIBGPIOD], [libgpiod >= 2.0], [
 	use_libgpiod=yes
-	PKG_CHECK_EXISTS([libgpiod >= 1.5],
-		[AC_DEFINE([HAVE_LIBGPIOD1_FLAGS_BIAS], [1], [define if libgpiod v1 has line request flags bias])])
-], [use_libgpiod=no])
+	is_libgpiodv2=yes
+], [
+	PKG_CHECK_MODULES([LIBGPIOD], [libgpiod], [
+		use_libgpiod=yes
+		is_libgpiodv2=no
+	], [
+		use_libgpiod=no
+		is_libgpiodv2=no
+	])
+])
+AM_CONDITIONAL([LINUXGPIODV2], [test x$is_libgpiodv2 = xyes])
 
 PKG_CHECK_MODULES([LIBJAYLINK], [libjaylink >= 0.2],
 	[use_libjaylink=yes], [use_libjaylink=no])
