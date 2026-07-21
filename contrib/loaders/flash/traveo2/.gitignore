@@ -1,0 +1,9 @@
+sdl
+out
+*.cflags
+*.config
+*.creator*
+*.files
+*.cflags
+*.cxxflags
+*.includes

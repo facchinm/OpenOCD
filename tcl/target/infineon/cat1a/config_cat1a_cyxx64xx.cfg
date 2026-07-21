@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2024-2025, Infineon Technologies AG, or an affiliate of
+# Infineon Technologies AG. All rights reserved.
+
+# Default configuration file for CYxx64xx families of microcontrollers.
+
+###############################################################################
+# CPU cores availability for the debugger and the acquisition methods
+###############################################################################
+
+set_or_global ENABLE_CM0            1
+set_or_global ENABLE_CM4            1
+set_or_global ENABLE_ACQUIRE        1
+set_or_global ENABLE_POWER_SUPPLY   0
+set_or_global POWERUP_DELAY         5000
+
+###############################################################################
+# Timings
+###############################################################################
+
+# The additional timeout for the debugger to wait from when the SWJ pins became
+# available to when the boot code starts the Listen Window.
+set_or_global ACQUIRE_TIMEOUT       15000
+
+###############################################################################
+# DAP and TAPs settings
+###############################################################################
+
+set_or_global SWJ_IRLEN             4
+
+###############################################################################
+# Flash properties and working area
+###############################################################################
+
+set_or_global WORKAREASIZE          0x1800
+set_or_global WORKAREAADDR          0x0802E000
+set_or_global WORKAREASIZE_CM       0x8000
+set_or_global WORKAREAADDR_CM       0x08000000
+set_or_global ENABLE_WFLASH         1
+set_or_global ENABLE_SFLASH         0
+set_or_global ENABLE_EFUSE          0
+
+###############################################################################
+# Adapter settings
+###############################################################################
+
+set_or_global ADAPTER_SPEED         2000
+set_or_global ADAPTER_SRST_DELAY    0
+set_or_global ADAPTER_SRST_PULSE    5

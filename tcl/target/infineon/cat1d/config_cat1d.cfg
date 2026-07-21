@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2024-2026, Infineon Technologies AG, or an affiliate of
+# Infineon Technologies AG. All rights reserved.
+
+# Default configuration file for CAT1D category of microcontrollers.
+# The definitions can be overwritten from the family and device-specific
+# configuration file(s)
+
+###############################################################################
+# CPU cores availability for the debugger and the acquisition methods
+###############################################################################
+
+set_or_global ENABLE_CM0                0
+set_or_global ENABLE_CM33               1
+set_or_global ENABLE_CM55               0
+set_or_global ENABLE_ACQUIRE            1
+set_or_global DEBUG_CERTIFICATE_ADDR    $SRAM_S_BASE
+
+###############################################################################
+# DAP and TAPs settings
+###############################################################################
+
+# DP->SELECT: AP Select register
+set_or_global AP_SEL_SYS                0xF0000000
+set_or_global AP_SEL_CM33               0xF0002000
+set_or_global AP_SEL_CM55               0xF0006000
+
+# AP->CSW: Control/Status Word register
+set_or_global AP_CSW_SYS                [expr {$arm::CSW_HPROT0_DATAINST   | \
+                                               $arm::CSW_HPROT1_PRIVILEGED | \
+                                               $arm::CSW_HPROT3_CACHEABLE  | \
+                                               $arm::CSW_HMASTER_AHB       | \
+                                               $arm::CSW_DbgSwEnable}] ; # 0xAB000000
+
+# CM33 AP is set with secure access by default (CSW_HNONSEC==0), but can be overwritten later, on CPU halt
+# CM55 AP - same CSW config as for CM33, but always Non-Secure access (CSW_HNONSEC==1)
+set_or_global AP_CSW_CM33               [expr {$arm::CSW_HPROT0_DATAINST   | \
+                                               $arm::CSW_HPROT1_PRIVILEGED | \
+                                               $arm::CSW_HPROT3_CACHEABLE  | \
+                                               $arm::CSW_HPROT4_LOOKUP     | \
+                                               $arm::CSW_HMASTER_AHB       | \
+                                               $arm::CSW_DbgSwEnable}]            ; # 0xBB000000
+set_or_global AP_CSW_CM55               [expr {$AP_CSW_CM33 | $arm::CSW_HNONSEC}] ; # 0xFB000000
+
+###############################################################################
+# Working area
+###############################################################################
+
+set_or_global WORKAREAADDR              $SRAM_S_BASE
+set_or_global WORKAREASIZE              $SRAM_SIZE

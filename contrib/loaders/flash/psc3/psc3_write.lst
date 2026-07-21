@@ -1,0 +1,121 @@
+   1              		.cpu cortex-m33
+   2              		.arch armv8-m.main
+   3              		.fpu softvfp
+   4              		.arch_extension dsp
+   5              		.eabi_attribute 20, 1
+   6              		.eabi_attribute 21, 1
+   7              		.eabi_attribute 23, 3
+   8              		.eabi_attribute 24, 1
+   9              		.eabi_attribute 25, 1
+  10              		.eabi_attribute 26, 1
+  11              		.eabi_attribute 30, 4
+  12              		.eabi_attribute 34, 1
+  13              		.eabi_attribute 18, 4
+  14              		.file	"psc3_write.c"
+  15              		.text
+  16              		.align	1
+  17              		.global	write
+  18              		.syntax unified
+  19              		.thumb
+  20              		.thumb_func
+  22              	write:
+  23              		@ Volatile: function does not return.
+  24              		@ args = 0, pretend = 0, frame = 576
+  25              		@ frame_needed = 0, uses_anonymous_args = 0
+  26 0000 80B5     		push	{r7, lr}
+  27 0002 0446     		mov	r4, r0
+  28 0004 0F46     		mov	r7, r1
+  29 0006 1546     		mov	r5, r2
+  30 0008 1E46     		mov	r6, r3
+  31 000a 2A4B     		ldr	r3, .L14
+  32 000c DFF8A890 		ldr	r9, .L14+4
+  33 0010 D3F8E48F 		ldr	r8, [r3, #4068]
+  34 0014 ADF5107D 		sub	sp, sp, #576
+  35              	.L2:
+  36 0018 0EB9     		cbnz	r6, .L3
+  37              	.L10:
+  38              		.syntax unified
+  39              	@ 167 "psc3_write.c" 1
+  40 001a 00BE     		bkpt 0
+  41              	@ 0 "" 2
+  42              		.thumb
+  43              		.syntax unified
+  44 001c FDE7     		b	.L10
+  45              	.L3:
+  46 001e 6268     		ldr	r2, [r4, #4]
+  47 0020 2368     		ldr	r3, [r4]
+  48 0022 9A42     		cmp	r2, r3
+  49 0024 FBD0     		beq	.L3
+  50 0026 4FF0000A 		mov	r10, #0
+  51 002a 4FF05073 		mov	r3, #54525952
+  52 002e CDE900AA 		strd	r10, r10, [sp]
+  53 0032 9B88     		ldrh	r3, [r3, #4]
+  54 0034 CDF808A0 		str	r10, [sp, #8]
+  55 0038 B3F58C7F 		cmp	r3, #280
+  56 003c 17D1     		bne	.L5
+  57 003e 1F4B     		ldr	r3, .L14+8
+  58 0040 D3F80834 		ldr	r3, [r3, #1032]
+  59 0044 B3F53C5F 		cmp	r3, #12032
+  60 0048 11D2     		bcs	.L5
+  61 004a 25F04053 		bic	r3, r5, #805306368
+  62 004e B3F1007F 		cmp	r3, #33554432
+  63 0052 0CD1     		bne	.L5
+  64 0054 174B     		ldr	r3, .L14
+  65 0056 6946     		mov	r1, sp
+  66 0058 D3F8E03F 		ldr	r3, [r3, #4064]
+  67 005c 2846     		mov	r0, r5
+  68 005e 9847     		blx	r3
+  69 0060 154B     		ldr	r3, .L14+4
+  70 0062 9842     		cmp	r0, r3
+  71 0064 03D0     		beq	.L5
+  72 0066 C4F804A0 		str	r10, [r4, #4]
+  73              		.syntax unified
+  74              	@ 98 "psc3_write.c" 1
+  75 006a 0046     		mov r0, r0
+  76 006c 00BE     		bkpt 0
+  77              	@ 0 "" 2
+  78              		.thumb
+  79              		.syntax unified
+  80              	.L5:
+  81 006e 0CAA     		add	r2, sp, #48
+  82 0070 1146     		mov	r1, r2
+  83 0072 6368     		ldr	r3, [r4, #4]
+  84 0074 03F50070 		add	r0, r3, #512
+  85              	.L7:
+  86 0078 9C46     		mov	ip, r3
+  87 007a 0433     		adds	r3, r3, #4
+  88 007c DCF800C0 		ldr	ip, [ip]
+  89 0080 8342     		cmp	r3, r0
+  90 0082 42F804CB 		str	ip, [r2], #4
+  91 0086 F7D1     		bne	.L7
+  92 0088 6A46     		mov	r2, sp
+  93 008a 2846     		mov	r0, r5
+  94 008c C047     		blx	r8
+  95 008e 4845     		cmp	r0, r9
+  96 0090 03D0     		beq	.L8
+  97 0092 0023     		movs	r3, #0
+  98 0094 6360     		str	r3, [r4, #4]
+  99              		.syntax unified
+ 100              	@ 98 "psc3_write.c" 1
+ 101 0096 0046     		mov r0, r0
+ 102 0098 00BE     		bkpt 0
+ 103              	@ 0 "" 2
+ 104              		.thumb
+ 105              		.syntax unified
+ 106              	.L8:
+ 107 009a 6368     		ldr	r3, [r4, #4]
+ 108 009c 05F50075 		add	r5, r5, #512
+ 109 00a0 03F50073 		add	r3, r3, #512
+ 110 00a4 BB42     		cmp	r3, r7
+ 111 00a6 28BF     		it	cs
+ 112 00a8 04F10803 		addcs	r3, r4, #8
+ 113 00ac 6360     		str	r3, [r4, #4]
+ 114 00ae 013E     		subs	r6, r6, #1
+ 115 00b0 B2E7     		b	.L2
+ 116              	.L15:
+ 117 00b2 00BF     		.align	2
+ 118              	.L14:
+ 119 00b4 00F08010 		.word	276885504
+ 120 00b8 02B0500D 		.word	223391746
+ 121 00bc 00104013 		.word	322965504
+ 123              		.ident	"GCC: (GNU) 12.2.0"

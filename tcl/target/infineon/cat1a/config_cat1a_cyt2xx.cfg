@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2024-2025, Infineon Technologies AG, or an affiliate of
+# Infineon Technologies AG. All rights reserved.
+
+# Default configuration file for CYT2xx families of microcontrollers.
+
+###############################################################################
+# CPU cores availability for the debugger and the acquisition methods
+###############################################################################
+
+set_or_global ENABLE_CM0                1
+set_or_global ENABLE_CM4                1
+set_or_global ENABLE_ACQUIRE            1
+set_or_global ENABLE_POWER_SUPPLY       0
+
+###############################################################################
+# DAP and TAPs settings
+###############################################################################
+
+set_or_global SWJ_IRLEN                 4
+
+###############################################################################
+# Flash properties and working area
+###############################################################################
+
+set_or_global WORKAREAADDR              0x08000800
+set_or_global WORKAREASIZE              0x8000
+
+###############################################################################
+# Adapter settings
+###############################################################################
+
+set_or_global ADAPTER_SPEED             2000
+set_or_global ADAPTER_SRST_DELAY        25
+set_or_global ADAPTER_SRST_PULSE        25

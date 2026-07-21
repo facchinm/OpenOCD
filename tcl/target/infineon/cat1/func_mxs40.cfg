@@ -1,0 +1,772 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2024-2025, Infineon Technologies AG, or an affiliate of
+# Infineon Technologies AG. All rights reserved.
+
+# Subroutines for microcontrollers with Infineon MXS40/MXS40v2 architecture.
+
+namespace eval mxs40 {
+
+	namespace import ::arm::*
+	namespace import ::ifx::*
+	namespace import ::cat1::*
+
+	# Shows flash boot version
+	proc show_flash_boot_ver { target_arch } {
+		log_proc_entry
+		global ADDR_FB_HI
+		global ADDR_FB_LO
+		global ADDR_SFLASH
+		if {![info exists ADDR_FB_HI] || ![info exists ADDR_FB_LO] || ![info exists ADDR_SFLASH]} {
+			if { [string match "psoc6*" $target_arch ]} {
+					set ADDR_FB_HI      0x16002004
+					set ADDR_FB_LO      0x16002018
+					set ADDR_SFLASH     0x16000028
+			} elseif {	[string match "traveo*" $target_arch ] ||
+						[string match "cat1c" $target_arch ] ||
+						[string match "xmc5*" $target_arch ] } {
+					set ADDR_FB_HI      0x17002004
+					set ADDR_FB_LO      0x17002018
+					set ADDR_SFLASH     0x170000A8
+			} else {
+				puts stderr "Error: Invalid Target passed into 'show_flash_boot_ver'"
+				log_proc_return
+				return
+			}
+		}
+		set fb_ver_lo ""
+		set fb_ver_hi ""
+
+		catch { set fb_ver_hi [mrw $ADDR_FB_HI] }
+
+		if {$fb_ver_hi eq "" || !$fb_ver_hi} {
+			puts stderr "Error: Invalid FlashBoot: High version word of Flash Boot is zero"
+			log_proc_return
+			return
+		}
+
+		catch { set fb_ver_lo [mrw $ADDR_FB_LO] }
+
+		set b0 [expr { $fb_ver_hi >> 28 } ]
+		set b1 [expr {($fb_ver_hi >> 24) & 0xF } ]
+		set b2 [expr {($fb_ver_hi >> 16) & 0xFF} ]
+		set b3 [expr {$fb_ver_hi & 0x0000FFFF}]
+
+		if {$b0 > 2} {
+			puts stderr "Error: Unsupported Flash Boot Version - Flash Boot Version \[31:28] = $b0"
+			log_proc_return
+			return
+		}
+
+		if {$b3 != 0x8001} {
+			puts stderr "Error: Flash Boot is corrupted or non Flash Boot image programmed"
+			log_proc_return
+			return
+		}
+
+		if { $b0 == 0 } { ; # Versioning scheme #1 or #2, PSoC6A-BLE-2 device family
+			if { $b1 == 1 } { ; # Versioning scheme #1, ** or *A
+				set fb_ver_str [format "1.%02d" $b2]
+			} elseif { $b1 == 2 } {
+				if { $b2 < 20 } {
+					set fb_ver_str [format "1.0.0.%d" $b2]
+				} elseif { $b2 < 29 } {
+					set fb_ver_str [format "1.0.1.%d" $b2]
+				} else {
+					set fb_ver_str [format "1.20.1.%d" $b2]
+				}
+			}
+		} elseif { $b0 == 1 } { ;# TVII-BE-1M **
+			set fb_ver_str [format "2.0.0.%d" $b2]
+		} elseif { $b0 == 2 } { ;# Versioning scheme #3
+			set patch [expr { $fb_ver_lo >> 24} ]
+			set build [expr { $fb_ver_lo & 0xFFFF } ]
+			set fb_ver_str [format "%d.%d.%d.%d" $b1 $b2 $patch $build ]
+		}
+
+		echo "** Flash Boot version: $fb_ver_str"
+		
+		set sflash_svn_ver 0
+		catch {
+			set sflash_svn_ver [mrw $ADDR_SFLASH]
+		}
+
+		if { $sflash_svn_ver != 0 && $sflash_svn_ver != 0xFFFFFFFF } {
+			echo "** SFlash version: $sflash_svn_ver"
+		}
+		
+		log_proc_return $fb_ver_str
+		return $fb_ver_str
+	}
+
+	# Shows siid, family and, revision
+	proc show_trgt_details { target_arch } {
+		log_proc_entry
+		global ADDR_FAMILY
+		global ADDR_SIID
+
+		if {![info exists ADDR_FAMILY] || ![info exists ADDR_SIID]} {
+			if { [string match "psoc6*" $target_arch ]} {
+				set ADDR_SIID 0x16000000
+				set ADDR_FAMILY 0x1600000C
+			} elseif {	[string match "traveo*" $target_arch ] ||
+						[string match "cat1c" $target_arch ] ||
+						[string match "xmc5*" $target_arch ] } {
+				set ADDR_SIID 0x17000000
+				set ADDR_FAMILY 0x1700000C
+			} else {
+				puts stderr "Error: Invalid Target passed into 'show_trgt_details'"
+				log_proc_return
+				return
+			}
+		}
+
+		# Check incorrect SiId programmed inside 2 batches
+		# of xmc5xxx described PROGTOOLS-7881
+		if {[string match "traveo*" $target_arch ] ||
+			[string match "cat1c" $target_arch ] ||
+			[string match "xmc5*" $target_arch ] } {
+			catch {
+				set lotinfo [mrw 0x17000600]
+				if {$lotinfo == 0x01910916} {
+					set ::FIX_SIID_FROM_SCRIPT xmc5200
+				} elseif {$lotinfo == 0x01910907} {
+					set ::FIX_SIID_FROM_SCRIPT xmc5300
+				}
+			}
+		}
+
+		# Silicon ID, Family, Revision
+		set si_id ""
+		set main_work_size {}
+		catch {
+			set dev_id [mrw $ADDR_SIID]
+			set si_id  [format "%04X" [expr {$dev_id  >> 16}]]
+
+			if {[info exists ::FIX_SIID_FROM_SCRIPT]} {
+				if { $::FIX_SIID_FROM_SCRIPT == "xmc5200"} {
+					set si_id "E3ED"
+				} elseif { $::FIX_SIID_FROM_SCRIPT == "xmc5300"} {
+					set si_id "E6ED"
+				}
+			}
+
+			set si_rev [format "%02X" [expr {($dev_id & 0x0000FF00 ) >> 8}]]
+			set si_family [format "%03X" [expr {[ mrw $ADDR_FAMILY] & 0x00000FFF} ]]
+			set rev_major "0x0[string index $si_rev 0]"
+			set rev_minor "0x0[string index $si_rev 1]"
+			set rev_major_str [expr {$rev_major == 0 ? "?" : [format %c [expr {$rev_major + 0x40}]]}]
+			set rev_minor_str [expr {$rev_minor == 0 ? "?" : [expr {$rev_minor - 1} ]}]
+			echo "** Silicon: 0x$si_id, Family: 0x$si_family, Rev.: 0x$si_rev (${rev_major_str}${rev_minor_str})"
+
+			if {[dict exists $::MPN $si_id]} {
+				set main_size [lindex $::MPN($si_id) 2]
+				set work_size [lindex $::MPN($si_id) 3]
+				set main_work_size [list $main_size $work_size]
+			}
+		}
+		detect_device_or_terminate $si_id
+
+		log_proc_return $main_work_size
+		return $main_work_size
+	}
+
+	# Shows chip protection
+	proc show_chip_protection {target_arch} {
+		log_proc_entry
+
+		global CPUSS_PROTECTION_REG
+		if {![info exists CPUSS_PROTECTION_REG]} {
+			if { [string match "psoc6" $target_arch ]} {
+				set CPUSS_PROTECTION_REG 0x40210500
+			} elseif {	[string match "psoc6_2m" $target_arch ] ||
+						[string match "traveo*" $target_arch ] ||
+						[string match "cat1c" $target_arch ] ||
+						[string match "xmc5*" $target_arch ] } {
+				set CPUSS_PROTECTION_REG 0x402020C4
+			} else {
+				puts stderr "Error: Invalid Target passed into 'show_chip_protection'"
+				log_proc_return
+				return
+			}
+		}
+
+		set protection [ mrw $CPUSS_PROTECTION_REG ]
+		set ret "X"
+		switch [format %d $protection] {
+			1 { set ret "VIRGIN" }
+			2 { set ret "NORMAL" }
+			3 { set ret "SECURE" }
+			4 { set ret "DEAD" }
+			default { set ret "UNKNOWN" }
+		}
+
+		echo "** Chip Protection: $ret"
+		log_proc_return
+	}
+
+	# Displays the PSoC6-specific target info
+	# Used for target_arch: psoc6, psoc6_2m
+	proc psoc6_trgt_info { target_arch main_reg_name } {
+		log_proc_entry
+		set detected_main_size 0
+
+		# 1. Use ${CHIPNAME}::MAIN_FLASH_SIZE or ${CHIPNAME}::FLASH_RESTRICTION_SIZE if defined
+		if { [info exists ${::CHIPNAME}::MAIN_FLASH_SIZE] } {
+			echo "** Use overriden Main Flash size, kb: [expr {${CHIPNAME}::MAIN_FLASH_SIZE >> 10}]"
+			set detected_main_size ${::CHIPNAME}::MAIN_FLASH_SIZE
+		}
+		
+		set main_work_size [show_trgt_details $target_arch]
+		if {$detected_main_size == 0} {
+		# 2. Use UDD because flash geometry is not read from register
+			if { [llength $main_work_size] == 2} {
+				set main_size [lindex $main_work_size 0]
+				echo "** Detected Main Flash size, kb: $main_size"
+				set detected_main_size [expr {$main_size * 1024}]
+			}
+		}
+
+		if { ${main_reg_name} != "" } { psoc6 set_region_size ${main_reg_name} $detected_main_size }
+		show_flash_boot_ver $target_arch
+		show_chip_protection $target_arch
+
+		log_proc_return
+	}
+
+	# Displays the PSoC64-specific target info
+	proc psoc64_trgt_info { target_arch } {
+		log_proc_entry
+		if { [[target current] was_examined] == 0 } { return }
+		set show_device_info_runned 1
+		echo "** Use overriden Main Flash size, kb: [expr {$::FLASH_RESTRICTION_SIZE >> 10}]"
+		show_trgt_details $target_arch
+		set fb_ver [show_flash_boot_ver $target_arch]
+		if {[string match "4.0.0.*" $fb_ver]} {
+			puts stderr "Warn: Pre-production version of device is detected which is incompatible with this software"
+			puts stderr "Warn: Please contact Infineon for new production parts"
+		}
+		log_proc_return
+	}
+
+	# Shows and sets device specific parameters
+	proc display_info {target_arch {main_reg_name ""} {work_reg_name ""} } {
+		log_proc_entry
+		set tgt [target current]
+		set CHIPNAME [string range ${tgt} 0 [expr {[string first "." ${tgt}] - 1}]]
+		global ${CHIPNAME}::info_runned
+
+		if { ![info exists ${CHIPNAME}::info_runned] } {
+			echo "***************************************"
+			catch { 
+				switch $target_arch {
+					"psoc6" -
+					"psoc6_2m" {
+						psoc6_trgt_info $target_arch $main_reg_name
+					}
+					"traveo21" -
+					"traveo22" -
+					"traveo23" -
+					"cat1c" -
+					"xmc5xxx" {
+						traveo2_trgt_info $target_arch $main_reg_name $work_reg_name
+					}
+					"psoc64" {
+						psoc64_trgt_info $target_arch
+					}
+					default {
+						puts stderr [format "Error: Invalid target architecture '%s' is passed into 'display_info' API" $target_arch]
+						log_proc_return
+						return
+					}
+				}
+			}
+			echo "***************************************"
+			terminate_if_wrong_config
+			set ${CHIPNAME}::info_runned true
+		}
+		log_proc_return
+	}
+
+	# Extracts number of large and small sectors from passed geometry
+	proc get_sectors_from_geom { geometry large_sect_tbl small_sect_tbl } {
+		set geometry_msk [expr {$geometry & 0x07}]
+		set num_sup_comb [llength $large_sect_tbl]
+
+		if { $geometry_msk >= $num_sup_comb  } {
+			puts stderr "Error: Cannot get sector count for Flash Geometry = $geometry_msk"
+			return -1
+		}
+
+		set large_sect_num [lindex $large_sect_tbl $geometry_msk]
+		set small_sect_num [lindex $small_sect_tbl $geometry_msk]
+
+		set ret_value [expr {($large_sect_num << 16) | $small_sect_num}]
+
+		return $ret_value
+	}
+
+	# Converts flash size to geometry
+	proc get_geom_from_size {size_kb size_tbl} {
+
+		set num_elements [llength $size_tbl]
+		set geometry -1
+
+		for {set i 0} { $i < $num_elements } {incr i} {
+			set size [lindex $size_tbl $i]
+			if {$size_kb == $size} {
+				set geometry $i
+				break
+			}
+		}
+
+		return $geometry
+	}
+
+	# Detects flash geometry of TRAVEO™II devices
+	# Used for target_arch: traveo21, traveo22, traveo23, cat1c, xmc5xxx
+	proc traveo2_trgt_info { target_arch main_reg_name work_reg_name} {
+		log_proc_entry
+		set tgt [target current]
+		set CHIPNAME [string range ${tgt} 0 [expr {[string first "." ${tgt}] - 1}]]
+		global ${CHIPNAME}::MAIN_FLASH_SIZE_OVERRIDE
+		global ${CHIPNAME}::WORK_FLASH_SIZE_OVERRIDE
+
+		set detected_main_sectors -1
+		set detected_work_sectors -1
+
+		# main / work size where index corresponds to flash geometry
+		# main flash geometry decoding
+		set main_size_kb_tbl        { 576 1088 2112 4160 6336 8384 }
+		set main_large_sect_num_tbl {  14   30   62  126  190  254 }
+		set main_small_sect_num_tbl {  16   16   16   16   32   32 }
+
+		# work flash geometry decoding
+		set work_size_kb_tbl        { 0  64  96  128 256 512 }
+		set work_large_sect_num_tbl { 0  24  36  48  96  192 }
+		set work_small_sect_num_tbl { 0 128 192 256 512 1024 }
+
+		# 1. Checking ${CHIPNAME}::MAIN_FLASH_SIZE_OVERRIDE / ${CHIPNAME}::WORK_FLASH_SIZE_OVERRIDE
+		if { [info exists ${CHIPNAME}::MAIN_FLASH_SIZE_OVERRIDE] } {
+			if { [set ${CHIPNAME}::MAIN_FLASH_SIZE_OVERRIDE] } {
+				set detected_main_sectors [set ${CHIPNAME}::MAIN_FLASH_SIZE_OVERRIDE]
+				# each large sector contains 32 KB
+				set m_size_large [expr {([set ${CHIPNAME}::MAIN_FLASH_SIZE_OVERRIDE] >> 16) << 5}]
+				# each small sector contains 8 KB
+				set m_size_small [expr {([set ${CHIPNAME}::MAIN_FLASH_SIZE_OVERRIDE] & 0xFFFF) << 3}]
+				foreach main_name ${main_reg_name} {
+					echo "** Use overriden Main Flash size, kb: [expr {$m_size_large + $m_size_small}]"
+				}
+			}
+		}
+
+		if { [info exists ${CHIPNAME}::WORK_FLASH_SIZE_OVERRIDE] } {
+			if { [set ${CHIPNAME}::WORK_FLASH_SIZE_OVERRIDE] } {
+				set detected_work_sectors [set ${CHIPNAME}::WORK_FLASH_SIZE_OVERRIDE]
+				# each large sector contains 2 KB
+				set w_size_large [expr {([set ${CHIPNAME}::WORK_FLASH_SIZE_OVERRIDE] >> 16) << 1}]
+				# each small sector contains 128 B
+				set w_size_small [expr {([set ${CHIPNAME}::WORK_FLASH_SIZE_OVERRIDE] & 0xFFFF) >> 3}]
+				foreach work_name ${work_reg_name} {
+					echo "** Use overriden Work Flash size, kb: [expr {$w_size_large + $w_size_small}]"
+				}
+			}
+		}
+
+		# print MPN
+		set main_work_size [show_trgt_details $target_arch]
+
+		set flash_geom 0
+		if { $detected_main_sectors == -1 || $detected_work_sectors == -1 } {
+			# 2. Use UDD if flash size is not overriden
+			if { [llength $main_work_size] == 2} {
+
+				if { $detected_main_sectors == -1 } {
+					set main_size [lindex $main_work_size 0]
+					echo "** Detected Main Flash size, kb: $main_size"
+					set geom [get_geom_from_size $main_size $main_size_kb_tbl]
+					if { $geom == -1 } {
+						puts stderr "Error: Cannot get geometry for main size kb = $main_size"
+						log_proc_return
+						return
+					}
+					set flash_geom [expr {($flash_geom & 0xF8) | $geom} ]
+				}
+
+				if { $detected_work_sectors == -1 } {
+					set work_size [lindex $main_work_size 1]
+					echo "** Detected Work Flash size, kb: $work_size"
+					set geom [get_geom_from_size $work_size $work_size_kb_tbl]
+					if { $geom == -1 } {
+						puts stderr "Error: Cannot get geometry for work size kb = $work_size"
+						log_proc_return
+						return
+					}
+					set flash_geom [expr {($flash_geom & 0xC7) | ($geom << 3)}]
+				}
+			}
+
+			if {!$flash_geom} {
+
+				# 3. Read Flash GEOMETRY register if main/works sectors are not detected yet
+				set MEM_SPCIF3_GEOMETRY 0x4024F00C
+				catch { set flash_geom [expr {[mrw $MEM_SPCIF3_GEOMETRY] & 0x3F}] }
+
+				if {$flash_geom} {
+					if { $detected_main_sectors == -1 } {
+						set m_size [lindex $main_size_kb_tbl [expr {$flash_geom & 0x07}]]
+						echo "** Detected Main Flash size from geometry register, kb: $m_size"
+					}
+
+					if { $detected_work_sectors == -1 } {
+						set w_size [lindex $work_size_kb_tbl [expr {$flash_geom >> 3}]]
+						echo "** Detected Work Flash size from geometry register, kb: $w_size"
+					}
+				}
+			}
+
+		   if { !$flash_geom}  {
+			   puts stderr "Error: Flash geometry was not detected"
+			   log_proc_return
+			   return
+		   }
+
+		   # get main/works sectors from geometry if they are not detected yet
+		   if { $detected_main_sectors == -1 } {
+			   set detected_main_sectors [get_sectors_from_geom $flash_geom $main_large_sect_num_tbl $main_small_sect_num_tbl]
+			   if { $detected_main_sectors == -1 } {
+				   puts stderr "Error: Cannot get sectors for main flash from geometry = $flash_geom"
+				   log_proc_return
+				   return
+			   }
+		   }
+
+		   if { $detected_work_sectors == -1 } {
+			   set work_geom [expr {$flash_geom >> 3}]
+			   set detected_work_sectors [get_sectors_from_geom $work_geom $work_large_sect_num_tbl $work_small_sect_num_tbl]
+			   if { $detected_work_sectors == -1 } {
+				   puts stderr "Error: Cannot get sectors for work flash from geometry = $work_geom"
+				   log_proc_return
+				   return
+			   }
+		   }
+		}
+
+		if { $detected_main_sectors == -1 } {
+			puts stderr "Error: Main Flash geometry was not detected"
+			log_proc_return
+			return
+		}
+
+		if { $detected_work_sectors == -1 } {
+			puts stderr "Error: Work Flash geometry was not detected"
+			log_proc_return
+			return
+		}
+
+		switch $target_arch {
+			"traveo21" -
+			"traveo22" -
+			"traveo23" {
+				foreach main_name ${main_reg_name} {
+					traveo2 set_region_size ${main_name} $detected_main_sectors
+				}
+
+				foreach work_name ${work_reg_name} {
+					traveo2 set_region_size ${work_name} $detected_work_sectors
+				}
+			}
+			"cat1c" {
+				if { $detected_main_sectors == 0x001E0010 } {
+					# Special case, XMC7 with 1088 KB MainFlash has different setor layout - 34 LS + 0 SS
+					set detected_main_sectors 0x00220000
+				}
+				if { ${main_reg_name} != "" } { cat1c set_region_size ${main_reg_name} $detected_main_sectors }
+				if { ${work_reg_name} != "" } { cat1c set_region_size ${work_reg_name} $detected_work_sectors }
+			}
+			"xmc5xxx" {
+				foreach main_name ${main_reg_name} {
+					xmc5xxx set_region_size ${main_name} $detected_main_sectors
+				}
+
+				foreach work_name ${work_reg_name} {
+					xmc5xxx set_region_size ${work_name} $detected_work_sectors
+				}
+			}
+			default {
+				puts stderr [format "Error: Invalid target architecture '%s' is passed into 'traveo2_detect_geometry' API" $target_arch]
+				log_proc_return
+				return
+			}
+		}
+		show_flash_boot_ver $target_arch
+		show_chip_protection $target_arch
+		log_proc_return
+	}
+
+	# Acquires the mxs40 device in Test Mode
+	proc mxs40_acquire { target } {
+		log_proc_entry
+
+		# acquire will leave CPU in running state
+		# openocd does not expect this
+		# ignore possible error e.g. when listen window is disabled
+		catch {kitprog3 acquire_psoc}
+
+		# we need to re-examine and halt target manually
+		${target} arp_examine
+		${target} arp_poll
+
+		if { [$target curstate] eq "reset" } {
+			$target arp_poll
+		}
+
+		# Ensure target has stopped on WFI instruction
+		set loops 2000
+		while { $loops } {
+			set sleeping [ expr {[mrw $::arm::DHCSR] & $::arm::DHCSR_S_SLEEP_MSK} ]
+			if { $sleeping } break
+			set loops [ expr {$loops - 1} ]
+		}
+
+		if { $sleeping } {
+			${target} arp_halt
+			${target} arp_waitstate halted 100
+			echo "** Device acquired successfully"
+			log_proc_return 1
+			return 1
+		}
+
+		puts stderr "********************************************"
+		puts stderr "* Failed to acquire the device in Test Mode"
+		puts stderr "********************************************"
+
+		log_proc_return 0
+		return 0
+	}
+	add_usage_text mxs40_acquire "target"
+	add_help_text mxs40_acquire "Acquires the device in Test Mode"
+
+	# Utility to make 'reset halt' work as reset;halt on a target
+	proc mxs40_reset_deassert_post { target_type target } {
+		log_proc_entry
+
+		if [string match "psoc6*" $target_type ] {
+			set cmd psoc6
+		} elseif [string match "traveo2*" $target_type ] {
+			set cmd traveo2
+		} elseif [string match "xmc5*" $target_type ] {
+			set cmd xmc5xxx
+		} elseif [string match "cat1c" $target_type ] {
+			set cmd cat1c
+		} else {
+			puts stderr "ocd_gdb_restart: target_type $target_type not supported"
+			log_proc_return
+			return
+		}
+		# MXS40 cleared AP registers including TAR during reset
+		# Force examine to synchronize OpenOCD target status
+		catch { $target arp_examine }
+		catch { $target arp_poll }
+
+		# Exit if $target is supposed to be running after Reset
+		if { $::RESET_MODE eq "run" } {
+			log_proc_return
+			return
+		}
+
+		# Check if $target is a primary core (cm0 for TRAVEO™II)
+		set is_primary_core [string match "*cm0" $target]
+
+		if { $is_primary_core } {
+			if { $::ENABLE_ACQUIRE } {
+				if {![using_jtag] && [adapter name] == "kitprog3"} {
+					if {[mxs40_acquire $target] == 0} {
+						echo "* Attempting to acquire the chip using alternate method"
+						$cmd reset_halt sysresetreq
+					}
+				}
+			} else {
+				$cmd reset_halt sysresetreq
+			}
+			check_flashboot_version
+		} else {
+			if { [$target curstate] eq "reset" } {
+				$target arp_poll
+			}
+
+			if { [$target curstate] eq "running" } {
+				echo "** $target: Ran after reset and before halt..."
+				$target arp_halt
+				$target arp_waitstate halted 100
+			}
+		}
+
+		log_proc_return
+	}
+
+	# Define check_flashboot_version if not already defined
+	# It is used on PSoC6 only to detect pre-production chips
+	if { [info proc check_flashboot_version] eq "" } {
+		proc check_flashboot_version {} {}
+	}
+
+	# Erases all non-virtual flash banks (in reverse order)
+	proc erase_all {} {
+		log_proc_entry
+
+		lset banks [flash list]
+		set banks_count [llength $banks]
+		for {set i [expr {$banks_count - 1}]} { $i >= 0 } { incr i -1 } {
+			set bank [lindex $banks $i]
+			set bank_driver $bank(driver)
+			set bank_name $bank(name)
+			echo [format "Erasing flash bank \"%s\" (%d of %d)..." $bank_name [expr {$banks_count - $i}] $banks_count ]
+			if { $bank_driver != "virtual" } {
+				flash erase_sector $i 0 last
+			} else {
+				echo "skipped (virtual)"
+			}
+		}
+
+		log_proc_return
+	}
+	add_help_text erase_all "Erases all non-virtual flash banks (in reverse order, for SMIF compatibility)"
+
+	# Tries to detect SMIF geometry by parsing TOC2
+	proc detect_smif {{sflash_base 0x16000000}} {
+		log_proc_entry
+		set cfg_ptr  [mrw [mrw [ expr {$sflash_base + 62 * 512 + 0x0C} ]]]
+		if { $cfg_ptr == 0 || $cfg_ptr == 0xFFFFFFFF  || $cfg_ptr < 0x10000000 || $cfg_ptr > 0x10200000 } {
+			echo "** SMIF configuration structure not found or invalid"
+			log_proc_return
+			return
+		}
+		set chip_num [mrw $cfg_ptr]
+		set chip_cfg_arry_p [mrw [expr {$cfg_ptr + 4}]]
+
+		echo ""
+		for {set i 0} {$i < $chip_num} {incr i} {
+			set chip_cfg  [mrw [expr {$chip_cfg_arry_p + 4 * $i}]]
+			set region_base [mrw [expr {$chip_cfg + 12}]]
+			set region_size [mrw [expr {$chip_cfg + 16}]]
+			set phys_cfg    [mrw [expr {$chip_cfg + 24}]]
+			set erase_size  [mrw [expr {$phys_cfg + 24}]]
+			set prgm_size   [mrw [expr {$phys_cfg + 36}]]
+
+			echo "### SMIF region #${i} - Erase Size: 0x[format %X $erase_size], Program Size: 0x[format %X $prgm_size]"
+			echo "set SMIF_BANKS {1 {addr 0x[format %08X $region_base] size 0x[format %08X $region_size] psize 0x[format %X $prgm_size] esize 0x[format %X $erase_size]}}"
+		}
+		log_proc_return
+	}
+	add_usage_text detect_smif "sflash_base (optional, 0x16000000 by default)"
+	add_help_text detect_smif "Detects SMIF regions and displays flash bank configuration"
+
+	# Overrides default init_reset procedure, stores reset mode in global variable
+	# mode can be `run`, `halt`, or `init`
+	proc init_reset { mode } {
+		log_proc_entry
+		set ::RESET_MODE $mode
+		if {[using_jtag]} {
+			jtag arp_init-reset
+		}
+		log_proc_return
+	}
+	set ::RESET_MODE "attach" ; # Default value before 'reset <mode>' issued
+
+	# Handles GDB extended 'restart' command
+	proc ocd_gdb_restart {target} {
+		log_proc_entry
+
+		if [string match "psoc6*" $target ] {
+			set cmd psoc6
+		} elseif [string match "traveo2*" $target ] {
+			set cmd traveo2
+		} elseif [string match "xmc5*" $target ] {
+			set cmd xmc5xxx
+		} elseif [string match "cat1c*" $target ] {
+			set cmd cat1c
+		} else {
+			puts stderr "ocd_gdb_restart: target $target not supported"
+			return
+		}
+
+		if [string match "*cm0" $target ] {
+			reset init
+			$cmd reset_halt sysresetreq
+		} else {
+			reset run
+			$cmd reset_halt sysresetreq
+		}
+		log_proc_return
+	}
+
+	# Power dropout handler
+	proc power_dropout {} {
+		log_proc_entry
+		if { [adapter name] eq "kitprog3" } {
+			local_echo off
+			set voltage [regexp -inline -- {[0-9]+\.[0-9]+} [kitprog3 get_power]]
+			local_echo on
+			puts stderr "Power dropout, target voltage: $voltage V"
+		}
+		log_proc_return
+	}
+
+	# Power restore handler
+	proc power_restore {} {
+		log_proc_entry
+		if { [adapter name] eq "kitprog3" } {
+			local_echo off
+			set voltage [regexp -inline -- {[0-9]+\.[0-9]+} [kitprog3 get_power]]
+			local_echo on
+			puts stderr "Power restore, target voltage: $voltage V"
+		}
+		log_proc_return
+	}
+
+	###############################################################################
+	# Depreciation checking
+	###############################################################################
+
+	# TODO: The deprecating messagess exists since July 11 2020 (> 4 years):
+	# https://gitlab.intra.infineon.com/repo/cyopenocd/-/commit/97403d15b5510e1a6644328b7b9363e10263851e
+	# Can we remove them now?
+
+	global WORKAREAADDR_CM0
+	if { [info exists WORKAREAADDR_CM0] } {
+		puts stderr "** The 'WORKAREAADDR_CM0' variable is deprecated, please use 'WORKAREAADDR'"
+		set WORKAREAADDR $WORKAREAADDR_CM0
+		unset WORKAREAADDR_CM0
+	}
+
+	global WORKAREASIZE_CM0
+	if { [info exists WORKAREASIZE_CM0] } {
+		puts stderr "** The 'WORKAREASIZE_CM0' variable is deprecated, please use 'WORKAREASIZE'"
+		set WORKAREASIZE $WORKAREASIZE_CM0
+		unset WORKAREASIZE_CM0
+	}
+
+	global WORKAREAADDR_CM4
+	if { [info exists WORKAREAADDR_CM4] } {
+		puts stderr "** The 'WORKAREAADDR_CM4' variable is deprecated, please use 'WORKAREAADDR'"
+		set WORKAREAADDR $WORKAREAADDR_CM4
+		unset WORKAREAADDR_CM4
+	}
+
+	global WORKAREASIZE_CM4
+	if { [info exists WORKAREASIZE_CM4] } {
+		puts stderr "** The 'WORKAREASIZE_CM4' variable is deprecated, please use 'WORKAREASIZE'"
+		set WORKAREASIZE $WORKAREASIZE_CM4
+		unset WORKAREASIZE_CM4
+	}
+
+	if { [info proc acquire] eq "" } {
+		proc acquire { target } {
+			puts stderr "** The 'acquire' command is deprecated, please use 'mxs40_acquire'"
+			mxs40_acquire $target
+		}
+		add_usage_text acquire "target"
+		add_help_text acquire "Acquires the device in Test Mode"
+	}
+
+} ;# namespace eval mxs40

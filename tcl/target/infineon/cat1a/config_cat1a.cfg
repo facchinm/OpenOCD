@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2024-2025, Infineon Technologies AG, or an affiliate of
+# Infineon Technologies AG. All rights reserved.
+
+# Default configuration file for CAT1A category of microcontrollers.
+# The definitions may be overwritten from the device-specific configuration files.
+
+# Set the specific chip and device (defined by the user externally),
+# or set the default one if not specified
+set_or_global CHIPNAME                 cat1a

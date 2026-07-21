@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2024-2026, Infineon Technologies AG, or an affiliate of
+# Infineon Technologies AG. All rights reserved.
+
+# Default configuration file for CAT1C category of microcontrollers.
+# The definitions can be overwritten from the family and device-specific
+# configuration file(s)
+
+# Set the specific chip and device (defined by the user externally),
+# or set the default one if not specified
+set_or_global CHIPNAME                  cat1c
+
+###############################################################################
+# CPU cores availability for the debugger and the acquisition methods
+###############################################################################
+
+set_or_global ENABLE_CM70               1
+set_or_global ENABLE_CM71               1
+set_or_global ENABLE_CM72               0
+set_or_global ENABLE_CM73               0
+set_or_global ENABLE_ACQUIRE            1
+set_or_global ENABLE_POWER_SUPPLY       0
+
+###############################################################################
+# DAP and TAPs settings
+###############################################################################
+
+set_or_global SWJ_IRLEN                 4
+
+# AP->CSW: Control/Status Word register
+set_or_global AP_CSW_CM7x               [expr {$arm::CSW_HPROT0_DATAINST   | \
+                                               $arm::CSW_HPROT1_PRIVILEGED | \
+                                               $arm::CSW_HPROT3_CACHEABLE  | \
+                                               $arm::CSW_HMASTER_AHB       | \
+                                               $arm::CSW_DbgSwEnable}] ; # 0xAB000000
+
+
+###############################################################################
+# Flash properties and working area
+###############################################################################
+
+set_or_global WORKAREAADDR              0x28000800
+set_or_global WORKAREASIZE              0x10000
+
+
+###############################################################################
+# Adapter settings
+###############################################################################
+
+set_or_global ADAPTER_SPEED             2000
+set_or_global ADAPTER_SRST_DELAY        25
+set_or_global ADAPTER_SRST_PULSE        25

@@ -1,0 +1,222 @@
+   1              		.cpu cortex-m0plus
+   2              		.eabi_attribute 20, 1
+   3              		.eabi_attribute 21, 1
+   4              		.eabi_attribute 23, 3
+   5              		.eabi_attribute 24, 1
+   6              		.eabi_attribute 25, 1
+   7              		.eabi_attribute 26, 1
+   8              		.eabi_attribute 30, 4
+   9              		.eabi_attribute 34, 0
+  10              		.eabi_attribute 18, 4
+  11              		.file	"psoc4_write.c"
+  12              		.text
+  13              		.align	1
+  14              		.global	psoc4_write
+  15              		.arch armv6s-m
+  16              		.syntax unified
+  17              		.code	16
+  18              		.thumb_func
+  19              		.fpu softvfp
+  21              	psoc4_write:
+  22              		@ Volatile: function does not return.
+  23              		@ args = 0, pretend = 0, frame = 32
+  24              		@ frame_needed = 1, uses_anonymous_args = 0
+  25 0000 F0B5     		push	{r4, r5, r6, r7, lr}
+  26 0002 5B0A     		lsrs	r3, r3, #9
+  27 0004 89B0     		sub	sp, sp, #36
+  28 0006 00AF     		add	r7, sp, #0
+  29 0008 0833     		adds	r3, r3, #8
+  30 000a BB60     		str	r3, [r7, #8]
+  31 000c 9308     		lsrs	r3, r2, #2
+  32 000e 0233     		adds	r3, r3, #2
+  33 0010 9B00     		lsls	r3, r3, #2
+  34 0012 7A61     		str	r2, [r7, #20]
+  35 0014 1A00     		movs	r2, r3
+  36 0016 0733     		adds	r3, r3, #7
+  37 0018 DB08     		lsrs	r3, r3, #3
+  38 001a 083A     		subs	r2, r2, #8
+  39 001c DB00     		lsls	r3, r3, #3
+  40 001e B961     		str	r1, [r7, #24]
+  41 0020 FA60     		str	r2, [r7, #12]
+  42 0022 7B60     		str	r3, [r7, #4]
+  43              	.L2:
+  44 0024 4368     		ldr	r3, [r0, #4]
+  45 0026 022B     		cmp	r3, #2
+  46 0028 00D1     		bne	.L3
+  47              		.syntax divided
+  48              	@ 146 "psoc4_write.c" 1
+  49 002a 00BE     		bkpt #0
+  50              	@ 0 "" 2
+  51              		.thumb
+  52              		.syntax unified
+  53              	.L3:
+  54 002c 4368     		ldr	r3, [r0, #4]
+  55 002e 002B     		cmp	r3, #0
+  56 0030 F8D0     		beq	.L2
+  57 0032 4368     		ldr	r3, [r0, #4]
+  58 0034 012B     		cmp	r3, #1
+  59 0036 F5D1     		bne	.L2
+  60 0038 0300     		movs	r3, r0
+  61 003a 0833     		adds	r3, r3, #8
+  62 003c FB61     		str	r3, [r7, #28]
+  63 003e 5B42     		rsbs	r3, r3, #0
+  64              	.L24:
+  65 0040 3B61     		str	r3, [r7, #16]
+  66 0042 0368     		ldr	r3, [r0]
+  67 0044 002B     		cmp	r3, #0
+  68 0046 01D1     		bne	.L15
+  69 0048 4360     		str	r3, [r0, #4]
+  70 004a EBE7     		b	.L2
+  71              	.L15:
+  72 004c 6C46     		mov	r4, sp
+  73 004e 7A68     		ldr	r2, [r7, #4]
+  74 0050 B969     		ldr	r1, [r7, #24]
+  75 0052 A31A     		subs	r3, r4, r2
+  76 0054 BA69     		ldr	r2, [r7, #24]
+  77 0056 9D46     		mov	sp, r3
+  78 0058 5200     		lsls	r2, r2, #1
+  79 005a 5208     		lsrs	r2, r2, #1
+  80 005c 9446     		mov	ip, r2
+  81 005e BA68     		ldr	r2, [r7, #8]
+  82 0060 FD68     		ldr	r5, [r7, #12]
+  83 0062 D140     		lsrs	r1, r1, r2
+  84 0064 334A     		ldr	r2, .L27
+  85 0066 0906     		lsls	r1, r1, #24
+  86 0068 0A43     		orrs	r2, r1
+  87 006a 1A60     		str	r2, [r3]
+  88 006c 7A69     		ldr	r2, [r7, #20]
+  89 006e 3969     		ldr	r1, [r7, #16]
+  90 0070 013A     		subs	r2, r2, #1
+  91 0072 5A60     		str	r2, [r3, #4]
+  92 0074 FA69     		ldr	r2, [r7, #28]
+  93 0076 0431     		adds	r1, r1, #4
+  94 0078 5519     		adds	r5, r2, r5
+  95 007a 5918     		adds	r1, r3, r1
+  96              	.L6:
+  97 007c AA42     		cmp	r2, r5
+  98 007e 34D1     		bne	.L7
+  99 0080 2D49     		ldr	r1, .L27+4
+ 100 0082 2E4A     		ldr	r2, .L27+8
+ 101 0084 2E4D     		ldr	r5, .L27+12
+ 102 0086 0B60     		str	r3, [r1]
+ 103 0088 2A60     		str	r2, [r5]
+ 104              		.syntax divided
+ 105              	@ 70 "psoc4_write.c" 1
+ 106 008a C046     		nop 
+ 107 008c C046     	 nop 
+ 108 008e C046     	 nop 
+ 109              	
+ 110              	@ 0 "" 2
+ 111              		.thumb
+ 112              		.syntax unified
+ 113 0090 A025     		movs	r5, #160
+ 114 0092 0A68     		ldr	r2, [r1]
+ 115 0094 2D06     		lsls	r5, r5, #24
+ 116 0096 160F     		lsrs	r6, r2, #28
+ 117 0098 3607     		lsls	r6, r6, #28
+ 118 009a AE42     		cmp	r6, r5
+ 119 009c 01D0     		beq	.L8
+ 120 009e 002A     		cmp	r2, #0
+ 121 00a0 41D1     		bne	.L9
+ 122              	.L8:
+ 123 00a2 BA69     		ldr	r2, [r7, #24]
+ 124 00a4 002A     		cmp	r2, #0
+ 125 00a6 23DA     		bge	.L10
+ 126 00a8 264A     		ldr	r2, .L27+16
+ 127 00aa 1A60     		str	r2, [r3]
+ 128 00ac 6246     		mov	r2, ip
+ 129 00ae 5A60     		str	r2, [r3, #4]
+ 130 00b0 0B60     		str	r3, [r1]
+ 131 00b2 254B     		ldr	r3, .L27+20
+ 132              	.L26:
+ 133 00b4 224A     		ldr	r2, .L27+12
+ 134 00b6 1360     		str	r3, [r2]
+ 135              		.syntax divided
+ 136              	@ 70 "psoc4_write.c" 1
+ 137 00b8 C046     		nop 
+ 138 00ba C046     	 nop 
+ 139 00bc C046     	 nop 
+ 140              	
+ 141              	@ 0 "" 2
+ 142              		.thumb
+ 143              		.syntax unified
+ 144 00be 0A68     		ldr	r2, [r1]
+ 145 00c0 A021     		movs	r1, #160
+ 146 00c2 130F     		lsrs	r3, r2, #28
+ 147 00c4 1B07     		lsls	r3, r3, #28
+ 148 00c6 0906     		lsls	r1, r1, #24
+ 149 00c8 8B42     		cmp	r3, r1
+ 150 00ca 2CD1     		bne	.L9
+ 151 00cc A546     		mov	sp, r4
+ 152              	.L11:
+ 153 00ce 7A69     		ldr	r2, [r7, #20]
+ 154 00d0 BB69     		ldr	r3, [r7, #24]
+ 155 00d2 9446     		mov	ip, r2
+ 156 00d4 0133     		adds	r3, r3, #1
+ 157 00d6 BB61     		str	r3, [r7, #24]
+ 158 00d8 0368     		ldr	r3, [r0]
+ 159 00da 013B     		subs	r3, r3, #1
+ 160 00dc 0360     		str	r3, [r0]
+ 161 00de FB69     		ldr	r3, [r7, #28]
+ 162 00e0 6344     		add	r3, r3, ip
+ 163 00e2 FB61     		str	r3, [r7, #28]
+ 164 00e4 3B69     		ldr	r3, [r7, #16]
+ 165 00e6 9B1A     		subs	r3, r3, r2
+ 166 00e8 AAE7     		b	.L24
+ 167              	.L7:
+ 168 00ea 40CA     		ldmia	r2!, {r6}
+ 169 00ec 5650     		str	r6, [r2, r1]
+ 170 00ee C5E7     		b	.L6
+ 171              	.L10:
+ 172 00f0 6246     		mov	r2, ip
+ 173 00f2 7D69     		ldr	r5, [r7, #20]
+ 174 00f4 6A43     		muls	r2, r5
+ 175 00f6 FD68     		ldr	r5, [r7, #12]
+ 176 00f8 5619     		adds	r6, r2, r5
+ 177              	.L12:
+ 178 00fa B242     		cmp	r2, r6
+ 179 00fc 0ED1     		bne	.L14
+ 180 00fe 0626     		movs	r6, #6
+ 181              	.L13:
+ 182 0100 3200     		movs	r2, r6
+ 183 0102 6546     		mov	r5, ip
+ 184 0104 D332     		adds	r2, r2, #211
+ 185 0106 2D04     		lsls	r5, r5, #16
+ 186 0108 1202     		lsls	r2, r2, #8
+ 187 010a 2A43     		orrs	r2, r5
+ 188 010c B625     		movs	r5, #182
+ 189 010e 2A43     		orrs	r2, r5
+ 190 0110 1A60     		str	r2, [r3]
+ 191 0112 0B60     		str	r3, [r1]
+ 192 0114 8023     		movs	r3, #128
+ 193 0116 1B06     		lsls	r3, r3, #24
+ 194 0118 3343     		orrs	r3, r6
+ 195 011a CBE7     		b	.L26
+ 196              	.L14:
+ 197 011c 20CA     		ldmia	r2!, {r5}
+ 198 011e 002D     		cmp	r5, #0
+ 199 0120 EBD0     		beq	.L12
+ 200 0122 0526     		movs	r6, #5
+ 201 0124 ECE7     		b	.L13
+ 202              	.L9:
+ 203 0126 A546     		mov	sp, r4
+ 204 0128 002A     		cmp	r2, #0
+ 205 012a D0D0     		beq	.L11
+ 206 012c 4260     		str	r2, [r0, #4]
+ 207              		.syntax divided
+ 208              	@ 161 "psoc4_write.c" 1
+ 209 012e 00BE     		bkpt #0
+ 210              	@ 0 "" 2
+ 211              		.thumb
+ 212              		.syntax unified
+ 213 0130 CDE7     		b	.L11
+ 214              	.L28:
+ 215 0132 C046     		.align	2
+ 216              	.L27:
+ 217 0134 B6D70000 		.word	55222
+ 218 0138 08000040 		.word	1073741832
+ 219 013c 04000080 		.word	-2147483644
+ 220 0140 04000040 		.word	1073741828
+ 221 0144 B6EB0000 		.word	60342
+ 222 0148 18000080 		.word	-2147483624
+ 224              		.ident	"GCC: (bleeding-edge-toolchain) 11.2.0"

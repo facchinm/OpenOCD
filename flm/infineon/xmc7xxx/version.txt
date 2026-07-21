@@ -1,0 +1,7 @@
+1.0.0.125
+
+Targets:
+  'infineon/xmc7xxx.cfg' for XMC7100/XMC7200 devices
+  'infineon/cytxbb.cfg' for CYT3BB/CYT4BB devices
+  'infineon/cyt4bf.cfg' for CYT4BF devices   
+  'infineon/cyt4dn.cfg' for CYT4DN devices

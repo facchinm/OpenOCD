@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2024-2025, Infineon Technologies AG, or an affiliate of
+# Infineon Technologies AG. All rights reserved.
+
+# The device-specific configuration file.
+# Overwrites the default (category/family-specific) definitions
+# See the variables description in the default configuration file(s)
+
+set_or_global RRAM_MAIN_RECLAIMED       0

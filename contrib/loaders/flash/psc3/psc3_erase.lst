@@ -1,0 +1,79 @@
+   1              		.cpu cortex-m33
+   2              		.arch armv8-m.main
+   3              		.fpu softvfp
+   4              		.arch_extension dsp
+   5              		.eabi_attribute 20, 1
+   6              		.eabi_attribute 21, 1
+   7              		.eabi_attribute 23, 3
+   8              		.eabi_attribute 24, 1
+   9              		.eabi_attribute 25, 1
+  10              		.eabi_attribute 26, 1
+  11              		.eabi_attribute 30, 4
+  12              		.eabi_attribute 34, 1
+  13              		.eabi_attribute 18, 4
+  14              		.file	"psc3_erase.c"
+  15              		.text
+  16              		.align	1
+  17              		.global	erase
+  18              		.syntax unified
+  19              		.thumb
+  20              		.thumb_func
+  22              	erase:
+  23              		@ Volatile: function does not return.
+  24              		@ args = 0, pretend = 0, frame = 48
+  25              		@ frame_needed = 0, uses_anonymous_args = 0
+  26 0000 80B5     		push	{r7, lr}
+  27 0002 0446     		mov	r4, r0
+  28 0004 0F46     		mov	r7, r1
+  29 0006 1546     		mov	r5, r2
+  30 0008 0026     		movs	r6, #0
+  31 000a 114B     		ldr	r3, .L9
+  32 000c DFF84490 		ldr	r9, .L9+4
+  33 0010 D3F8E08F 		ldr	r8, [r3, #4064]
+  34 0014 8CB0     		sub	sp, sp, #48
+  35              	.L2:
+  36 0016 0DB9     		cbnz	r5, .L3
+  37              	.L6:
+  38              		.syntax unified
+  39              	@ 100 "psc3_erase.c" 1
+  40 0018 00BE     		bkpt 0
+  41              	@ 0 "" 2
+  42              		.thumb
+  43              		.syntax unified
+  44 001a FDE7     		b	.L6
+  45              	.L3:
+  46 001c 6268     		ldr	r2, [r4, #4]
+  47 001e 2368     		ldr	r3, [r4]
+  48 0020 9A42     		cmp	r2, r3
+  49 0022 FBD0     		beq	.L3
+  50 0024 6368     		ldr	r3, [r4, #4]
+  51 0026 6946     		mov	r1, sp
+  52 0028 1868     		ldr	r0, [r3]
+  53 002a CDE90066 		strd	r6, r6, [sp]
+  54 002e 0296     		str	r6, [sp, #8]
+  55 0030 C047     		blx	r8
+  56 0032 4845     		cmp	r0, r9
+  57 0034 02D0     		beq	.L4
+  58 0036 6660     		str	r6, [r4, #4]
+  59              		.syntax unified
+  60              	@ 82 "psc3_erase.c" 1
+  61 0038 0046     		mov r0, r0
+  62 003a 00BE     		bkpt 0
+  63              	@ 0 "" 2
+  64              		.thumb
+  65              		.syntax unified
+  66              	.L4:
+  67 003c 6368     		ldr	r3, [r4, #4]
+  68 003e 013D     		subs	r5, r5, #1
+  69 0040 0433     		adds	r3, r3, #4
+  70 0042 BB42     		cmp	r3, r7
+  71 0044 28BF     		it	cs
+  72 0046 04F10803 		addcs	r3, r4, #8
+  73 004a 6360     		str	r3, [r4, #4]
+  74 004c E3E7     		b	.L2
+  75              	.L10:
+  76 004e 00BF     		.align	2
+  77              	.L9:
+  78 0050 00F08010 		.word	276885504
+  79 0054 02B0500D 		.word	223391746
+  81              		.ident	"GCC: (GNU) 12.2.0"

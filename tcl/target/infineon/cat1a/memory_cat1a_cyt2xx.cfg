@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2024-2025, Infineon Technologies AG, or an affiliate of
+# Infineon Technologies AG. All rights reserved.
+
+# Memory and Registers Map for CYT2xx families of microcontrollers.
+
+###############################################################################
+# Base Memory Map
+###############################################################################
+
+set_or_global MAIN_FLASH_ADDR               0x10000000
+set_or_global WORK_FLASH_ADDR               0x14000000
+set_or_global SUPER_FLASH_ADDR              0x17000000
+set_or_global EFUSE_ADDR                    0x90700000
+set_or_global SMIF_ADDR                     0x18000000
+
+###############################################################################
+# Device registers
+###############################################################################
+
+set ADDR_SIID                               0x17000000
+set ADDR_FAMILY                             0x1700000C
+set ADDR_FB_HI                              0x17002004
+set ADDR_FB_LO                              0x17002018
+set ADDR_SFLASH                             0x170000A8
+
+set FLASHC_FLASH_CTL                        0x40240000 ; # Flash control
+set FLASHC_FLASH_CTL_DISABLE_ECC            0xFFAAFFFF ; # MAIN_ECC_EN | MAIN_ERR_SILENT | WORK_ECC_EN | WORK_ERR_SILENT

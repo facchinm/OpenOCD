@@ -1,0 +1,74 @@
+GLOBAL_DEFS := -DCY_USE_PSVP=0 -Dtviic2d4m -DCYT3DLABHS -DUSED_SMIF_CHANNEL=1
+
+LDSCRIPT := flm/linker_script.ld
+
+INCLPATHS := \
+-Iflm										\
+-Isdl/common								\
+-Isdl/common/hdr							\
+-Isdl/common/hdr/cmsis						\
+-Isdl/common/hdr/cmsis/include				\
+-Isdl/common/src							\
+-Isdl/common/src/drivers					\
+-Isdl/common/src/drivers/adc				\
+-Isdl/common/src/drivers/canfd				\
+-Isdl/common/src/drivers/crypto				\
+-Isdl/common/src/drivers/crypto/src			\
+-Isdl/common/src/drivers/dma				\
+-Isdl/common/src/drivers/evtgen				\
+-Isdl/common/src/drivers/gpio				\
+-Isdl/common/src/drivers/ipc				\
+-Isdl/common/src/drivers/lin				\
+-Isdl/common/src/drivers/lvd				\
+-Isdl/common/src/drivers/mcwdt				\
+-Isdl/common/src/drivers/mpu				\
+-Isdl/common/src/drivers/prot				\
+-Isdl/common/src/drivers/scb				\
+-Isdl/common/src/drivers/smartio			\
+-Isdl/common/src/drivers/sysflt				\
+-Isdl/common/src/drivers/sysint				\
+-Isdl/common/src/drivers/syslib				\
+-Isdl/common/src/drivers/syspm				\
+-Isdl/common/src/drivers/sysreset			\
+-Isdl/common/src/drivers/sysrtc				\
+-Isdl/common/src/drivers/systick			\
+-Isdl/common/src/drivers/syswdt				\
+-Isdl/common/src/drivers/tcpwm				\
+-Isdl/common/src/drivers/trigmux			\
+-Isdl/common/src/mw							\
+-Isdl/common/src/mw/button					\
+-Isdl/common/src/mw/semihosting				\
+-Isdl/common/src/mw/sw_timer				\
+-Isdl/common/src/startup					\
+-Isdl/tviic2d4m								\
+-Isdl/tviic2d4m/hdr							\
+-Isdl/tviic2d4m/hdr/rev_a					\
+-Isdl/tviic2d4m/hdr/rev_a/ip				\
+-Isdl/tviic2d4m/hdr/rev_a/mcureg			\
+-Isdl/tviic2d4m/src							\
+-Isdl/tviic2d4m/src/drivers					\
+-Isdl/tviic2d4m/src/drivers/audioss			\
+-Isdl/tviic2d4m/src/drivers/cpu				\
+-Isdl/tviic2d4m/src/drivers/crypto			\
+-Isdl/tviic2d4m/src/drivers/crypto/libs		\
+-Isdl/tviic2d4m/src/drivers/ethernet		\
+-Isdl/tviic2d4m/src/drivers/flash			\
+-Isdl/tviic2d4m/src/drivers/flexray			\
+-Isdl/tviic2d4m/src/drivers/flexray/api		\
+-Isdl/tviic2d4m/src/drivers/flexray/ccal	\
+-Isdl/tviic2d4m/src/drivers/flexray/fhal	\
+-Isdl/tviic2d4m/src/drivers/sd_host			\
+-Isdl/tviic2d4m/src/drivers/smif			\
+-Isdl/tviic2d4m/src/drivers/sysclk			\
+-Isdl/tviic2d4m/src/drivers/sysflt			\
+-Isdl/tviic2d4m/src/drivers/sysreg			\
+-Isdl/tviic2d4m/src/examples/smif			\
+-Isdl/tviic2d4m/src/interrupts				\
+-Isdl/tviic2d4m/src/interrupts/rev_a		\
+-Isdl/tviic2d4m/src/mw						\
+-Isdl/tviic2d4m/src/mw/reghc				\
+-Isdl/tviic2d4m/src/mw/smif_mem				\
+-Isdl/tviic2d4m/src/system					\
+-Isdl/tviic2d4m/src/system/rev_a			\
+-Isdl/tviic2d4m/src/examples/smif/S25H/03_DualQuadSPI/
+

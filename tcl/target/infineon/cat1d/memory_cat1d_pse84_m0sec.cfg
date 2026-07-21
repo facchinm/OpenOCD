@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2024-2025, Infineon Technologies AG, or an affiliate of
+# Infineon Technologies AG. All rights reserved.
+
+# The device-specific Memory and Registers Map.
+# Overwrites the upper-level (category/family-specific) definitions.
+# See the memory and registers description in the default configuration file
+
+###############################################################################
+# Base Memory Map
+###############################################################################
+
+# Note: M0SECCPUSS uses secure protected interface and shall only access secured memory aliasing
+set_or_global SRAM_M0_S_BASE            0x30000000
+set_or_global SRAM_M0_SIZE              0x00010000
+set_or_global RRAM_MAIN_BASE            0x02000000
+set_or_global RRAM_MAIN_SIZE            0x00040000
+set_or_global RRAM_PROT_BASE            0x03C00000
+set_or_global RRAM_PROT_SIZE            0x00040000
+set_or_global RRAM_PROT_P_BASE          0x03800000
+set_or_global RRAM_PROT_P_SIZE          0x00040000
+
+###############################################################################
+# Device registers
+###############################################################################
+
+set_or_global M0SECCPUSS_SRAM_CTL       0x40000054
