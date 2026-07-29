@@ -12,9 +12,16 @@
 #include <helper/time_support.h>
 
 #define PIC32CK_FLASH_PFM_BASE		0x0C000000u
+#define PIC32CK_FLASH_BOOT_BASE		0x08000000u
+#define PIC32CK_FLASH_BOOT_SIZE		(128u * 1024u)
 
 #define PIC32CK_DSU_BASE		0x44000000u
 #define PIC32CK_DSU_DID		(PIC32CK_DSU_BASE + 0x120u)
+#define PIC32CK_DSU_STATUSA	(PIC32CK_DSU_BASE + 0x100u)
+#define PIC32CK_DSU_STATUSB	(PIC32CK_DSU_BASE + 0x104u)
+#define PIC32CK_DSU_BCC0		(PIC32CK_DSU_BASE + 0x110u)
+#define PIC32CK_DSU_BCC1		(PIC32CK_DSU_BASE + 0x114u)
+#define PIC32CK_DSU_DAL		(PIC32CK_DSU_BASE + 0x124u)
 
 #define PIC32CK_FCW_BASE		0x44004000u
 #define PIC32CK_FCW_CTRLA		(PIC32CK_FCW_BASE + 0x00u)
@@ -23,6 +30,9 @@
 #define PIC32CK_FCW_KEY			(PIC32CK_FCW_BASE + 0x1Cu)
 #define PIC32CK_FCW_ADDR		(PIC32CK_FCW_BASE + 0x20u)
 #define PIC32CK_FCW_SRCADDR		(PIC32CK_FCW_BASE + 0x24u)
+
+#define PIC32CK_FCW_LBWP			(PIC32CK_FCW_BASE + 0x6Cu)
+#define PIC32CK_FCW_UBWP			(PIC32CK_FCW_BASE + 0x70u)
 
 #define PIC32CK_FCW_STATUS_BUSY		(1u << 0)
 
@@ -38,6 +48,7 @@
 #define PIC32CK_FCW_OP_PAGE_ERASE	0x4u
 
 #define PIC32CK_FCW_UNLOCK_WRKEY	0x91C32C01u
+#define PIC32CK_FCW_UNLOCK_CFGKEY	0x91C32C04u
 
 #define PIC32CK_PAGE_SIZE		4096u
 #define PIC32CK_ROW_SIZE		1024u
@@ -56,6 +67,7 @@ static const struct pic32ck_part pic32ck_parts[] = {
 	{ 0x09520053u, "PIC32CK1025xG00100", 1024 },
 	{ 0x09519053u, "PIC32CK1025xG01064", 1024 },
 	{ 0x0951A053u, "PIC32CK1025xG01100", 1024 },
+	{ 0x0951B053u, "PIC32CK1025xG01144", 1024 },
 	{ 0x0951C053u, "PIC32CK1025SG01064", 1024 },
 	{ 0x0951D053u, "PIC32CK1025SG01100", 1024 },
 	{ 0x09523053u, "PIC32CK1025SG00100", 1024 },
@@ -74,6 +86,74 @@ struct pic32ck_flash_bank {
 	const char *part_name;
 	uint32_t page_size;
 	uint32_t row_size;
+};
+
+static const struct command_registration pic32ck_command_handlers[];
+
+/*
+ * Boot ROM recovery skeleton
+ *
+ * The PIC32CK chip-erase/unlock operation is a Boot ROM protocol carried
+ * over BCC0/BCC1.  It is deliberately kept separate from the FCW path:
+ * FCW unlock keys cannot change DAL or recover a protected device.
+ *
+ * TODO: fill in the packet format and response values from the PIC32CK
+ * Boot ROM specification.  Do not replace this with a guessed DSU CMD
+ * value; DSU CTRL only implements CRC32, MBIST, and MSET on this family.
+ */
+static int pic32ck_bootrom_chip_erase(struct target *target)
+{
+	uint32_t dal;
+	int res;
+
+	res = target_read_u32(target, PIC32CK_DSU_DAL, &dal);
+	if (res != ERROR_OK)
+		return res;
+
+	LOG_INFO("PIC32CK initial DAL=0x%08" PRIx32, dal);
+
+    // Clear BWP using SFR Write Unlock Value
+    res = target_write_u32(target, PIC32CK_FCW_KEY, PIC32CK_FCW_UNLOCK_CFGKEY);
+	if (res != ERROR_OK)
+		return res;
+
+    res = target_write_u32(target, PIC32CK_FCW_LBWP, 0x00000000u);
+	if (res != ERROR_OK)
+		return res;
+
+    res = target_write_u32(target, PIC32CK_FCW_UBWP, 0x00000000u);
+	if (res != ERROR_OK)
+		return res;
+
+    res = target_write_u32(target, PIC32CK_FCW_KEY, 0x00000000u);
+	if (res != ERROR_OK)
+		return res;
+
+	return res;
+}
+
+COMMAND_HANDLER(pic32ck_handle_recover_command)
+{
+	struct target *target = get_current_target(CMD_CTX);
+
+	if (!target)
+		return ERROR_FAIL;
+
+	if (CMD_ARGC != 0)
+		return ERROR_COMMAND_SYNTAX_ERROR;
+
+	return pic32ck_bootrom_chip_erase(target);
+}
+
+static const struct command_registration pic32ck_command_handlers[] = {
+	{
+		.name = "pic32ck_recover",
+		.usage = "",
+		.handler = pic32ck_handle_recover_command,
+		.mode = COMMAND_EXEC,
+		.help = "Recover a protected PIC32CK using the Boot ROM chip-erase sequence.",
+	},
+	COMMAND_REGISTRATION_DONE
 };
 
 static const struct pic32ck_part *pic32ck_find_part(uint32_t did)
@@ -182,6 +262,16 @@ FLASH_BANK_COMMAND_HANDLER(pic32ck_flash_bank_command)
 
 	bank->driver_priv = chip;
 
+	/* The command is global because it operates on the current target rather
+	 * than on one particular flash bank.  Register it once per OpenOCD
+	 * command context; multiple PIC32CK banks are allowed. */
+	static bool commands_registered;
+	if (!commands_registered) {
+		if (register_commands(CMD_CTX, NULL, pic32ck_command_handlers) != ERROR_OK)
+			return ERROR_FAIL;
+		commands_registered = true;
+	}
+
 	return ERROR_OK;
 }
 
@@ -207,19 +297,19 @@ static int pic32ck_probe(struct flash_bank *bank)
 		return res;
 	}
 
-	part = pic32ck_find_part(chip->did);
-	if (part) {
-		chip->part_name = part->name;
-		flash_kb = part->flash_kb;
-	} else {
-		flash_kb = pic32ck_guess_flash_kb(chip->did);
-		if (flash_kb == 0) {
-			LOG_ERROR("Unknown PIC32CK DID 0x%08" PRIx32, chip->did);
-			return ERROR_FLASH_BANK_NOT_PROBED;
-		}
-		LOG_WARNING("Unknown PIC32CK DID 0x%08" PRIx32 ", using inferred flash size %" PRIu32 "KB",
-			chip->did, flash_kb);
-	}
+    part = pic32ck_find_part(chip->did);
+    if (part) {
+    chip->part_name = part->name;
+    flash_kb = part->flash_kb;
+    } else {
+        flash_kb = pic32ck_guess_flash_kb(chip->did);
+        if (flash_kb == 0) {
+            LOG_ERROR("Unknown PIC32CK DID 0x%08" PRIx32, chip->did);
+            return ERROR_FLASH_BANK_NOT_PROBED;
+        }
+        LOG_WARNING("Unknown PIC32CK DID 0x%08" PRIx32 ", using inferred flash size %" PRIu32 "KB",
+            chip->did, flash_kb);
+    }
 
 	bank->size = flash_kb * 1024u;
 	bank->num_sectors = bank->size / chip->page_size;
@@ -236,7 +326,7 @@ static int pic32ck_probe(struct flash_bank *bank)
 
 	chip->probed = true;
 
-	if (bank->base != PIC32CK_FLASH_PFM_BASE) {
+	if (bank->base != PIC32CK_FLASH_PFM_BASE && bank->base != PIC32CK_FLASH_BOOT_BASE) {
 		LOG_WARNING("PIC32CK PFM is typically at 0x%08" PRIx32 ", configured bank base is 0x%08" PRIx32,
 			PIC32CK_FLASH_PFM_BASE, (uint32_t)bank->base);
 	}
